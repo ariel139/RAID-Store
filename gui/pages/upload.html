@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="../styles/main.css">
+  <title>Side Menu Example</title>
+</head>
+<body>
+
+  <div class="sidebar">
+    <button class="menu-button" onclick="toggleButtonColor(this)">Welcome Ariel</button>
+    <button class="menu-button" onclick="toggleButtonColor(this)">Dash Board & stats</button>
+    <button class="menu-button" onclick="toggleButtonColor(this)">Upload Data</button>
+    <button class="menu-button" onclick="toggleButtonColor(this)">Contact</button>
+  </div>
+
+  <div class="content">
+    <!-- Your main content goes here -->
+    <div class="rounded-container">
+        <!-- Your column content goes here -->
+        <h1>Upload your data</h1>
+        <button type="submit" class="signin-button">Sign In</button>
+      </div>
+  
+  </div>
+
+</body>
+<script>
+   function toggleButtonColor(button) {
+  // Remove 'clicked' class from all buttons
+  var buttons = document.querySelectorAll('.menu-button');
+  buttons.forEach(function(btn) {
+    btn.classList.remove('clicked');
+  });
+
+  // Add 'clicked' class to the clicked button
+  button.classList.add('clicked');
+}
+</script>
+</html>
