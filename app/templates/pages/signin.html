@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="stylesheet" href="../styles/main.css">
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles/main.css') }}">
   <title>Sign In Page</title>
 </head>
 <body>
@@ -11,7 +11,10 @@
   <div class="signin-container">
     <img src="https://api.dicebear.com/7.x/big-ears-neutral/svg?backgroundType=gradientLinear" alt="User Image" class="user-image">
     <h1>Sign In</h1>
-    <form>
+    <form method="post", action="{{ url_for('sign_in')}}">
+      <label for="user_id">User Name:</label>
+      <input type="text" id="user_id" name="user_id" placeholder="Enter your User Name">
+
       <label for="password">Password:</label>
       <input type="password" id="password" name="password" placeholder="Enter your password">
 
