@@ -4,6 +4,7 @@ from threading import Thread
 from Message import Message
 from node import Node
 from enums import Countries,Category
+from Computers import Computers
 # global vars
 running = True
 

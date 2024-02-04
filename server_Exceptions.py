@@ -1,0 +1,2 @@
+class SizeToLow(Exception):
+    pass
