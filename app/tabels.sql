@@ -11,7 +11,6 @@ CREATE TABLE `Computers` (
 	`MAC` BINARY PRIMARY KEY NOT NULL,
 	`ip` varchar(15) NOT NULL,
 	`size` bigint NOT NULL,
-	`online` TINYINT(1) NOT NULL DEFAULT 0,
 	`geo_location` enum NOT NULL,
 	PRIMARY KEY (`MAC`)
 );

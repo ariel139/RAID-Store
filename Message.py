@@ -1,30 +1,21 @@
 import socket
 from struct import pack, unpack
 from typing import Union
+from enums import Category
 class Message:
-    def __init__(self, category: bytes, opcode: bytes, data: Union[str, bytes], size = 0):
-        self.category = socket.htons(pack('B',category))
-        self.opcode = socket.htons(pack('B', opcode))
+    def __init__(self, category: Category, opcode: int, data: Union[str, bytes], size = 0):
+        # self.category = pack('H',socket.htons(category.value[0]))
+        self.category = category.value
+        self.opcode = opcode
         if isinstance(data, str):
             self.data = data.encode()
-        self.data = self._parse_data(data)
         if not size:
             self.size = len(self.data)
-            self.size = socket.htonl(pack('I', self.size))
+            self.size = pack('H', socket.htons(self.size))
         else:
             self.size = size
     
-    @staticmethod
-    def _parse_data(data:bytes, send = True) -> bytes:
-        method = (socket.htonl, socket.htons) if send else  (socket.ntohs, socket.ntohl)
-        reminder = len(data) % 2
-        parsed = b''
-        for i in range(0,len(data)-reminder-2,2):
-            parsed += method[0](data[i:i+2])
-        if reminder:
-            parsed += method[1](data[-1])
-        return parsed
-    
+   
     @staticmethod
     def _parse_id(id: int): 
         id = socket.htons(id)
@@ -33,17 +24,21 @@ class Message:
     @classmethod
     def parse_response(self,data:bytes):
         size = socket.ntohs(unpack('H',data[:2])[0])
-        catergory = socket.ntohs(unpack('B',data[2:3])[0]) # not sure if mask needed ^ b'\xe0'
-        opcode = socket.ntohs(unpack('B', data[2:3])[0]) # not sure if mask needed^ b'\x1f'
+        cat_op = data[2]
+        opcode = cat_op & 15# not sure if mask needed ^ b'\xe0'
+        catergory = (cat_op & 240) >> 5
         id = socket.ntohs(unpack('H', data[3:5])[0])
-        data = Message._parse_data(data[5:], send = False)
-        return Message(catergory,opcode,data, size= size), id
+        return Message(Category(catergory),opcode,data, size= size), id
 
     def build_message(self, id : Union[int, bytes]):
         if isinstance(id, int):
             id = self._parse_id(id)
-        return self.size + self.category + self.opcode + id + self.data
+        cat_op = (self.category << 5) | self.opcode
+        cat_op = pack('c',cat_op.to_bytes(1,'big')) # dosent matter if ig or little beacuse one byte
+        return self.size + cat_op + id + self.data
 
 
-message = b'\x13\x44\x54\xf5\x55\x34\x65'
-msg = Message.parse_response(message)
+
+msg_sent = Message(Category.Authentication,1,b"\x5\xhello\x3123\x14")
+msg_data = msg_sent.build_message(1)
+msg_recv = Message.parse_response(msg_data)
