@@ -1,6 +1,6 @@
 import mysql.connector
 import mysql.connector.errors as data_errors
-from Exceptions import *
+from app.gui_Exceptions import *
 from random import randbytes, randint
 from hashlib import sha256
 # mydb = 

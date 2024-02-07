@@ -53,4 +53,8 @@ class Node:
             self._data_stream += data[int_size:]
         
         message, id =  Message.parse_response(data)
-        self.messages[id] = message
+        if id in self.messages:
+            self.messages.pop(id)
+        else:
+            self.messages[id] = message
+        return  message, id

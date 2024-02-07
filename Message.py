@@ -2,24 +2,31 @@ import socket
 from struct import pack, unpack
 from typing import Union
 from enums import Category
+import hashlib
 class Message:
-    def __init__(self, category: Category, opcode: int, data: Union[str, bytes,tuple], size = 0):
+    def __init__(self, category: Category, opcode: int, data: Union[str, bytes,tuple], size:bytes = 0):
         # self.category = pack('H',socket.htons(category.value[0]))
         self.category = category.value
         self.opcode = opcode
-        if isinstance(data, tuple):
-            self.data = self._create_params(data)
-        elif isinstance(data, str):
-           self.data = data.encode()
+        if isinstance(data, str):
+           data = data.encode()
+        if isinstance(data,bytes):
+            self.data = self._get_params(data)       
         else:
             self.data = data
         if not size:
-            self.size = len(self.data)
+
+            self.size = Message._get_tuple_size(self.data)
             self.size = pack('H', socket.htons(self.size))
         else:
             self.size = size
     
-   
+    @staticmethod
+    def _get_tuple_size(tup:tuple):
+        size = 0
+        for i in tup:
+            size += len(i)+2
+        return size
     @staticmethod
     def _parse_id(id: int): 
         id = socket.htons(id)
@@ -33,14 +40,14 @@ class Message:
         catergory = (cat_op & 240) >> 5
         id = socket.ntohs(unpack('H', data[3:5])[0])
         params = self._get_params(data[5:])
-        return Message(Category(catergory),opcode,data, size= size), id
+        return Message(Category(catergory),opcode,params, size= size), id
     
-    def _create_params(self,data:tuple):
+    def _create_params(self,data:tuple)-> bytes:
         params = b''
         for obj in data:
             params+= len(obj).to_bytes(2,'little') + obj
         return params
-    def _get_params(data: bytes):
+    def _get_params(data: bytes)-> tuple:
         index = 0
         params = []
         while index < len(data):
@@ -54,10 +61,7 @@ class Message:
             id = self._parse_id(id)
         cat_op = (self.category << 5) | self.opcode
         cat_op = pack('c',cat_op.to_bytes(1,'big')) # dosent matter if ig or little beacuse one byte
-        return self.size + cat_op + id + self.data
+        return self.size + cat_op + id + self._create_params(self.data)
 
-
-
-msg_sent = Message(Category.Authentication,1,b"\x5\xhello\x3123\x14")
-msg_data = msg_sent.build_message(1)
-msg_recv = Message.parse_response(msg_data)
+    def __hash__(self) -> int:
+        return hash(self)

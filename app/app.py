@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request
 import sys
 from User import User
-from Exceptions import *
+from app.gui_Exceptions import *
 app = Flask(__name__)
 
 @app.route("/")
