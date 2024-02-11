@@ -1,4 +1,12 @@
 from enum import Enum
+import server_Exceptions
+
+server_exceptions ={
+    '0': server_Exceptions.UnknownError,
+    '1': server_Exceptions.UserDoesNotExsit,
+    '2': server_Exceptions.UserAlreadyExsit,
+    '3': server_Exceptions.InValidMessageFormat
+}
 
 class Category(Enum):
     Authentication=1

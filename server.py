@@ -1,3 +1,4 @@
+import traceback
 import socket
 from typing import  Tuple
 from threading import Thread, Lock
@@ -6,31 +7,58 @@ from node import Node
 from enums import Countries,Category
 from Computers import Computers
 from queue import Queue
-
+from server_Exceptions import UserAlreadyExsit, UserDoesNotExsit
 MAX_SUB_THREADS = 5
-
 # global vars
 running = True
 sessions = {}
 nodes = []
 session_locker = Lock()
 
+def lock_session(func):
+    def wrapper(*args, **kwargs):
+        session_locker.acquire()
+        func(*args, **kwargs)
+        session_locker.release()
+    return wrapper
+
+@ lock_session
+def add_seesion(node_key:str, mac:str):
+    global sessions
+    sessions[node_key] = mac
+
 def handle_request(message: Message, node_key:int):
     global sessions
-    match (message.category):
+    category = Category(message.category)
+    match (category):
         case Category.Authentication:
             if message.opcode == 1:
-                pass # endpoint sign up
-            elif message.opcode == 2:
-                pass # delete endpoint
-            elif message.opcode == 3:
+                 # endpoint sign up
                 mac = message.data[0].decode()
-                session_locker.acquire()
-                sessions[str(node_key)] = mac
-                session_locker.release()
-                return Message(message.category,message.opcode+3,b'')
+                try:
+                    pc = Computers(mac,message.data[1].decode(), message.data[2].decode())
+                except UserAlreadyExsit:
+                    return Message(Category.Errors,2)
+                add_seesion(str(node_key),mac)
+                return Message(Category.Authentication,5)
+            elif message.opcode == 2:
+                # delete endpoint 
+                pc = Computers.GetComputer(message.data[0])
+                #TODO: handle moving the data to other source of storage
+                pc.delete_computer()
+                return Message(Category.Authentication, 6)
+            elif message.opcode == 3:
+                #endpoint signin
+                mac = message.data[0].decode()
+                try:
+                    pc = Computers.GetComputer(mac)
+                    add_seesion(str(node_key),mac)
+                except UserDoesNotExsit:
+                    return Message(Category.Errors,1)
+                return Message(Category.Authentication,5)
             else:
-                pass # error
+                return Message(Category.Errors,3)
+                # error
         case Category.Status:
             pass
         case Category.Storage:
@@ -39,20 +67,26 @@ def handle_request(message: Message, node_key:int):
         case Category.Recovering:
             pass
         case Category.Errors:
+            #may not be used
             pass
         case _:
-            pass
-            #default
+            return Message(Category.Errors,3)
+            #error in messgae format
 
 def handle_requests(message: Message, q: Queue, key:int, id: str):
-    res = handle_request(message, key)
+    try:
+        res = handle_request(message, key)
+    except Exception as error:
+        traceback.print_exc()
+        res = Message(Category.Errors,0)
     q.put((res,id))
 
 def send_messages(node: Node, q: Queue):
     while True:
-        message, id = q.get()
-        if message == 'stop':
+        val = q.get()
+        if val == 'stop':
             break
+        message, id  = val
         if isinstance(message, Message):
             node.send(message,id)
  
@@ -84,6 +118,7 @@ def main(creds: Tuple[str, int ]):
     server_socket = socket.socket()
     server_socket.bind(creds)
     server_socket.listen(5)
+    print('SERVER running...')
     while running:
         soc, addr = server_socket.accept()
         print('new connection from: '+addr[0]+':'+str(addr[1]))

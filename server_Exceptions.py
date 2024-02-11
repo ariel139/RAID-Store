@@ -8,3 +8,12 @@ class GeneralError(Exception):
 
 class UserDoesNotExsit(Exception):
     pass
+
+class UserAlreadyExsit(Exception):
+    pass
+
+class UnknownError(Exception):
+    pass
+
+class InValidMessageFormat(Exception):
+    pass

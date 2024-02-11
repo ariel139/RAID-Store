@@ -13,12 +13,11 @@ class Node:
 
     def _generate_id(self):
         cnt = 1
-        for i in self.messages.keys():
-            if cnt >= 2 ** 16 -1:
-                raise Exception('Unable to communicate to many sessions open')                
-            if int(i) != cnt:
-                return str(cnt)
-            cnt+=1
+        for i in range(2**16-1):
+            if not str(i) in self.messages.keys():
+                return i
+        raise Exception('Unable to communicate to many sessions open')                
+        
     
     def send(self, message: Message, id:int = 0):
         if id == 0:
@@ -35,21 +34,21 @@ class Node:
     @staticmethod
     def _get_size(data_stream: bytes):
         size = data_stream[:2]
-        size = socket.ntohs(size)
-        return unpack('B', size)
+        size = unpack('H', size)[0]
+        return socket.ntohs(size)
     
     def recive(self,) -> Message:
         if self._data_stream != b'':
             header_size = self._data_stream
         else:
             header_size = self.soc.recv(Node.SIZE_HEADER_SIZE)
-        while len(header_size) < Node.SIZE_HEADER_SIZE:
-            header_size+= self.soc.recv(Node.SIZE_HEADER_SIZE)
+            while len(header_size) < Node.SIZE_HEADER_SIZE:
+                header_size+= self.soc.recv(Node.SIZE_HEADER_SIZE)
         data = header_size
         int_size = self._get_size(header_size)
-        while len(data) < int_size:
+        while len(data) < int_size+Node.SIZE_HEADER_SIZE:
             data += self.soc.recv(Node.MAX_RECIVE_SIZE)
-        if len(data) > int_size:
+        if len(data) > int_size+Node.SIZE_HEADER_SIZE:
             self._data_stream += data[int_size:]
         
         message, id =  Message.parse_response(data)
