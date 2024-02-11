@@ -9,9 +9,12 @@ PASSWORD = '112358'
 
 class DataBaseSession:
     def __init__(self) -> None:
+        
         self.db = mc.connect(host = DATABASE_IP, user = USERNAME, password = PASSWORD)
         self.cursor = self.db.cursor()
         self.insert('USE RAID;')
+        
+             
 
     def insert(self,query:str, values: Union[tuple,list]= None) -> None:
         if isinstance(values,list):

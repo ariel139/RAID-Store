@@ -8,12 +8,26 @@ server_exceptions ={
     '3': server_Exceptions.InValidMessageFormat
 }
 
+
 class Category(Enum):
     Authentication=1
     Storage = 2
     Recovering = 3
     Errors = 4
     Status = 5
+
+client_out_puts = {
+    Category.Authentication.name :{
+        '4': 'You signed up succcesfuly!',
+        '5': 'You deleted your PC succefuly. exting...',
+        '6': 'signed in succefuly'
+    },
+    Category.Storage.name :{
+        '6':'You added stroge space succefuly'
+    }
+    
+}
+
 
 class Countries(Enum):
     Afghanistan= 1,

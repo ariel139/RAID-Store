@@ -7,7 +7,7 @@ from node import Node
 from enums import Countries,Category
 from Computers import Computers
 from queue import Queue
-from server_Exceptions import UserAlreadyExsit, UserDoesNotExsit
+from server_Exceptions import *
 MAX_SUB_THREADS = 5
 # global vars
 running = True
@@ -62,6 +62,15 @@ def handle_request(message: Message, node_key:int):
         case Category.Status:
             pass
         case Category.Storage:
+            if message.opcode == 0:
+                mac = sessions[str(node_key)]
+                pc = Computers.GetComputer(mac)
+                try:
+                    pc.add_storage(message.data[0])
+                except SizeToLow:
+                    return Message(Category.Errors,5,'The Size of the messgae is To Low')
+                return Message(Category.Storage,6)
+
             # add disk / storage space
             pass
         case Category.Recovering:

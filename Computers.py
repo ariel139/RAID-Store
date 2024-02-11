@@ -42,14 +42,16 @@ class Computers(DataBaseSession):
         query = Computers.DELETE_ROW
         self.insert(query,(self.mac,))
     
-    def add_storage(self,size: int):
+    def add_storage(self,size: Union[int, bytes]):
+        if isinstance(size, bytes):
+            size = int(size.decode())
         get_size_query = "SELECT size FROM Computers WHERE mac = %s"
-        update_size_query = 'UPDATE Computers SET size = %s;'
+        update_size_query = 'UPDATE Computers SET size = %s WHERE MAC=%s'
         real_size = self.fetch((get_size_query,(self.mac,)),all=False)[0]
-        if real_size + size < 1 : 
+        if int(real_size) + int(size) < 1 : 
             raise server_Exceptions.SizeToLow('The desird size is lower then 1')
         else:
             new_size = real_size +size
-            self.insert(update_size_query,(new_size,))
+            self.insert(update_size_query,(new_size,self.mac))
 
 
