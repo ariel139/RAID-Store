@@ -25,7 +25,7 @@ class DataBaseSession:
             self.cursor.execute(query,values)
         self.db.commit()
     
-    def fetch(self,query: Union[tuple, str],all= True) -> iter:
+    def fetch(self,query: Union[tuple, str],all= False) -> iter:
         if isinstance(query, tuple):
             self.cursor.execute(query[0],query[1] )
         else:

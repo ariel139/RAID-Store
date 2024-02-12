@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="{{ url_for('static', filename='styles/main.css')}}">
-    <title>Popup Page</title>
+    <title>{{message_head}}</title>
     <style>
       
       
@@ -20,7 +20,8 @@
     <script>
         function closePopup() {
             // You can customize this function based on your requirements
-            alert('Popup closed!');
+            window.history.back()
+
         }
     </script>
 </body>

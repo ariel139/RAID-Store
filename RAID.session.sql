@@ -1,1 +1,1 @@
-SELECT size FROM Computers WHERE MAC='0xccd9ac32d1f5'
+select (salt) from data_users where user_id='ariel0'

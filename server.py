@@ -43,7 +43,8 @@ def handle_request(message: Message, node_key:int):
                 return Message(Category.Authentication,5)
             elif message.opcode == 2:
                 # delete endpoint 
-                pc = Computers.GetComputer(message.data[0])
+                mac = sessions[str(node_key)]
+                pc = Computers.GetComputer(mac)
                 #TODO: handle moving the data to other source of storage
                 pc.delete_computer()
                 return Message(Category.Authentication, 6)
@@ -60,6 +61,9 @@ def handle_request(message: Message, node_key:int):
                 return Message(Category.Errors,3)
                 # error
         case Category.Status:
+            if message.opcode == 2:
+                #TODO: handle moving the data temporerly
+                return Message(Category.Status,3)
             pass
         case Category.Storage:
             if message.opcode == 0:

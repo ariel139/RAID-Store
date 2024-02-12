@@ -7,7 +7,10 @@ server_exceptions ={
     '2': server_Exceptions.UserAlreadyExsit,
     '3': server_Exceptions.InValidMessageFormat
 }
-
+class Requests(Enum):
+    Add=1
+    Get=2
+    Delete=3
 
 class Category(Enum):
     Authentication=1
@@ -18,12 +21,16 @@ class Category(Enum):
 
 client_out_puts = {
     Category.Authentication.name :{
-        '4': 'You signed up succcesfuly!',
-        '5': 'You deleted your PC succefuly. exting...',
-        '6': 'signed in succefuly'
+        '4': 'signed in succefuly',
+        '5': 'You signed up succcesfuly!',
+        '6': 'You deleted your PC succefuly. exting...',
+        
     },
     Category.Storage.name :{
         '6':'You added stroge space succefuly'
+    },
+    Category.Status.name:{
+        '3': 'turn off complete'
     }
     
 }

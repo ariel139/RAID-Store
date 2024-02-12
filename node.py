@@ -12,7 +12,6 @@ class Node:
         
 
     def _generate_id(self):
-        cnt = 1
         for i in range(2**16-1):
             if not str(i) in self.messages.keys():
                 return i
@@ -30,6 +29,7 @@ class Node:
             print('---DEBUG--- SENT:')
             print(message_data)
         self.messages[id] = message
+        return id
     
     @staticmethod
     def _get_size(data_stream: bytes):

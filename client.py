@@ -4,13 +4,18 @@ from Message import Message
 from enums import *
 import server_Exceptions
 from uuid import getnode # for mac adress
-
+from threading import Thread
 # constants
 SERVER_IP = '127.0.0.1' #TODO: set default server ip
 SERVER_PORT = 8200 # TODO: Set deafult server port
 MAC = hex(getnode()).encode()# TODO: set it later
 FREE_SPACE = 100000 # b'\xa0\x86\x01' in bytes
 LOCATION = Countries.Afghanistan
+
+#global vars
+RUNNING = True
+client_asks = [] # list holding the ids of messages of clients asks
+
 
 def init_sign_in(server: Node):
     sign_in_message = Message(Category.Authentication,3,(MAC,))
@@ -32,7 +37,8 @@ def init_sign_in(server: Node):
             sign_up = Message(Category.Authentication,1,(MAC,str(FREE_SPACE), str(LOCATION.value[0])))
             server.send(sign_up)
         
-def handle_node_asks():
+def handle_node_asks(node: Node):
+    global RUNNING, client_asks
     menu = """What Do You Wish To DO:
     0. exit
     1. delete this pc from the network
@@ -42,26 +48,33 @@ def handle_node_asks():
     res = input('Enter your answer: ')
     match(res):
         case '0':
-            return Message(Category.Status,2)
+            RUNNING = False
+            request = Message(Category.Status,2)
                 # close all
         case '1':
-            return Message(Category.Authentication,2)
+            request = Message(Category.Authentication,2)
             # delete pc
         case '2':
             #TODO: MAYBE: check if there is enough space in the PC
             size = input('Enter amount of bytes you can allocate:')
-            check_str = size[1:] if size[0] == '-' else size
-            if not check_str.isnumeric():
-                print('invalid size')
-            return Message(Category.Storage,0,(size,))
+            if size !='':
+                check_str = size[1:] if size[0] == '-' else size
+                if check_str.isnumeric():
+                    request = Message(Category.Storage,0,(size,))
+            else:
+                print('invalid Input')
+                request = None
             # add storage
         case _:
-            print('Invalid answer')                    
+            request = None
+            print('Invalid answer') 
+    if request is not None:
+        id = node.send(request)
+        client_asks.append(id)
+
         
-def handle_request(node: Node, response: Message):
+def handle_exceptions(response: Message):
     #TODO: handle id
-    node.send(response)
-    response, id = node.recive()
     if Category(response.category) == Category.Errors:
         if response.opcode == 5:
             raise Exception(response.data[0])
@@ -70,6 +83,18 @@ def handle_request(node: Node, response: Message):
         return response
     # later handle exceptions
 
+def handle_mesage(id, message: Message):
+    if id in client_asks:
+        print(client_out_puts[Category(message.category).name][str(message.opcode)])
+        #TODO: add buffer so the stdout and in wont mess up
+        client_asks.remove(id)
+    
+def handle_server_requests(node: Node):
+    while RUNNING:
+        request, id = node.recive()
+        res = handle_exceptions(request)
+        handle_mesage(id,res)
+        # handle in here
 
 def main():
     client_soc = socket.socket()
@@ -78,10 +103,10 @@ def main():
     node = Node(client_soc)
     init_sign_in(node)
     #TODO: add the threads shit
-    while True:
-        msg = handle_node_asks()
-        res = handle_request(node,msg)
-        print(client_out_puts[Category(res.category).name][str(res.opcode)])
+    server_reqs_th = Thread(target= handle_server_requests, args=(node,))
+    server_reqs_th.start()
+    while RUNNING:
+        handle_node_asks(node)
 
 
 

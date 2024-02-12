@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request
 import sys
-from User import User
-from app.gui_Exceptions import *
+from User import *
+from gui_Exceptions import *
 app = Flask(__name__)
 
 @app.route("/")
@@ -19,7 +19,15 @@ def sign_in():
         return render_template('pages/popup.html',message_head='User Error', message='User Does Not Exist')
     except WrongPassword:
         return render_template('pages/popup.html', message_head='Password Error', message='Wrong Password')
-    
+
+@app.route('/upload_file', methods=['POST'])
+def process_file():
+    file_name = request.form.get('file')
+    file_data = request.files['file'].read()
+    # print(file_data)
+    return render_template('pages/upload.html')
+
+
 
 if __name__ == "__main__":
     app.run(debug=True)
