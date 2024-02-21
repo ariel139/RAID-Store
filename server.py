@@ -7,8 +7,14 @@ from node import Node
 from enums import Countries,Category
 from Computers import Computers
 from queue import Queue
+from Semaphore import Semaphore
 from server_Exceptions import *
+from Query_Request import Query, DEFAULT_SIZE
+from SharedMemory import SharedMemory
 MAX_SUB_THREADS = 5
+SIGNAL_SEMAPHORE_NAME = 'sem_signal'
+SHARED_MEMORY_NAME ='shared_memory'
+
 # global vars
 running = True
 sessions = {}
@@ -126,12 +132,24 @@ def handle_client(client_soc: socket.socket):
             th.join()
 
 
+def get_gui_requests(sem:Semaphore,shr:SharedMemory):
+    global running
+    while running:
+        sem.acquire()
+        req = Query.analyze_request(shr)
+        print(req)
+
+
 def main(creds: Tuple[str, int ]):
     global running
     server_socket = socket.socket()
     server_socket.bind(creds)
     server_socket.listen(5)
     print('SERVER running...')
+    signal_sem = Semaphore(SIGNAL_SEMAPHORE_NAME)
+    shr = SharedMemory(SHARED_MEMORY_NAME,DEFAULT_SIZE)
+    gui_thread = Thread(target=get_gui_requests,args=(signal_sem,shr))
+    gui_thread.start()
     while running:
         soc, addr = server_socket.accept()
         print('new connection from: '+addr[0]+':'+str(addr[1]))

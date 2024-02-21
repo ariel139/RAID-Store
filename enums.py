@@ -11,6 +11,7 @@ class Requests(Enum):
     Add=1
     Get=2
     Delete=3
+    PID=4 # the file name is 'PID' and the data is the pid
 
 class Category(Enum):
     Authentication=1

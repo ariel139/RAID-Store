@@ -1,1 +1,0 @@
-select (salt) from data_users where user_id='ariel0'
