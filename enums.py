@@ -5,13 +5,28 @@ server_exceptions ={
     '0': server_Exceptions.UnknownError,
     '1': server_Exceptions.UserDoesNotExsit,
     '2': server_Exceptions.UserAlreadyExsit,
-    '3': server_Exceptions.InValidMessageFormat
+    '3': server_Exceptions.InValidMessageFormat,
+    '6': server_Exceptions.DeviceAlreadyExsits
+}
+
+class DriveTypes(Enum):
+    SCSI='1'
+    HDC='2'
+    IDE='3'
+    USB='4'
+    _1394 ='5'
+
+drive_types = {
+    'SCSI' :DriveTypes.SCSI,
+    'HDC': DriveTypes.HDC,
+    'IDE': DriveTypes.IDE,
+    'USB': DriveTypes.USB,
+    '1394': DriveTypes._1394
 }
 class Requests(Enum):
     Add=1
-    Get=2
+    Retrive=2
     Delete=3
-    PID=4 # the file name is 'PID' and the data is the pid
 
 class Category(Enum):
     Authentication=1
@@ -28,7 +43,8 @@ client_out_puts = {
         
     },
     Category.Storage.name :{
-        '6':'You added stroge space succefuly'
+        '6':'You added stroge space succefuly',
+        '8':'You added a drive succesfly'
     },
     Category.Status.name:{
         '3': 'turn off complete'

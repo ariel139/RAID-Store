@@ -36,7 +36,7 @@ class Semaphore:
     def delete(self,):
         CloseHandle(self.semaphore_handle)
     
-    def __del__(self,):
+    def __delattr__(self,):
         self.delete()
 
 

@@ -1,19 +1,25 @@
 import mmap
 from os.path import exists
+from server_Exceptions import FileToLargeForPC
 ALL_ACCESS = mmap.ACCESS_COPY |mmap.ACCESS_READ | mmap.ACCESS_WRITE
 class SharedMemory:
     def __init__(self, name:str, size=0,file: bool = False) -> None:
-        self.size = 0 if size==0 else size
-        if file:
-            if not exists(name):
-                raise ValueError('file does not exsit:cannot mmap an empty file')
-            with open(name,'r+b') as file:
-                self.handle = mmap.mmap(file.fileno(),self.size)
-        else:  
-            self.handle = mmap.mmap(-1,self.size, tagname=name, access= mmap.ACCESS_WRITE)
-        self.name = name
-        self.read_cursor = 0
-        self.write_cursor = 0
+        try:
+            self.size = 0 if size==0 else size
+            if file:
+                if not exists(name):
+                    raise ValueError('file does not exsit:cannot mmap an empty file')
+                with open(name,'r+b') as file:
+                    self.handle = mmap.mmap(file.fileno(),self.size)
+            else: 
+                self.handle = mmap.mmap(-1,self.size, tagname=name, access= mmap.ACCESS_WRITE)
+            self.name = name
+            self.read_cursor = 0
+            self.write_cursor = 0
+        except OSError as err:
+            if '1450' in err:
+                raise FileToLargeForPC()
+
         
     def read(self,size:int):
         if size == 0:
@@ -50,10 +56,11 @@ class SharedMemory:
             print('Unable to read, the object is read only')
     
     def close(self):
-        self.handle.close()
+        if self.handle:
+            self.handle.close()
     
     def __del__(self,):
-        self.handle.close()
+        self.close()
     def __len__(self):
         return self.size
 

@@ -12,14 +12,14 @@ class Message:
             self.data = self._get_params(data)       
         else:
             self.data = data
-            self.init_tup()
+            self._init_tup()
         if not size:
             self.size = Message._get_tuple_size(self.data)
             self.size = pack('H', socket.htons(self.size+3))
         else:
             self.size = size
     
-    def init_tup(self):
+    def _init_tup(self):
         self.data = list(self.data)
         for i in range(len(self.data)):
             try:

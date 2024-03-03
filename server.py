@@ -4,34 +4,51 @@ from typing import  Tuple
 from threading import Thread, Lock
 from Message import Message
 from node import Node
-from enums import Countries,Category
+from enums import Countries,Category, Requests
 from Computers import Computers
 from queue import Queue
 from Semaphore import Semaphore
 from server_Exceptions import *
 from Query_Request import Query, DEFAULT_SIZE
 from SharedMemory import SharedMemory
+from drives import Drives
 MAX_SUB_THREADS = 5
 SIGNAL_SEMAPHORE_NAME = 'sem_signal'
 SHARED_MEMORY_NAME ='shared_memory'
 
 # global vars
 running = True
-sessions = {}
-nodes = []
+sessions = {} # key: node_key value: mac
+nodes = [] # list of nodes connected
+messages_queues = {} # key: node_hash value:queue
+messages_queue_locker = Lock()
 session_locker = Lock()
 
-def lock_session(func):
-    def wrapper(*args, **kwargs):
-        session_locker.acquire()
-        func(*args, **kwargs)
-        session_locker.release()
-    return wrapper
+def lock(locker: Lock):
+    def lock_deco(func):
+        def wrapper(*args, **kwargs):
+            locker.acquire()
+            func(*args, **kwargs)
+            locker.release()
+        return wrapper
+    return lock_deco
 
-@ lock_session
+@ lock(session_locker)
 def add_seesion(node_key:str, mac:str):
     global sessions
     sessions[node_key] = mac
+
+@lock(messages_queue_locker)
+def add_queue(node_key:int, queue:Queue):
+    global messages_queues
+    messages_queues[str(node_key)] = queue
+
+@lock(messages_queue_locker)
+def remove_queue(node_key:int):
+    global messages_queues
+    del messages_queues[str(node_key)]
+
+
 
 def handle_request(message: Message, node_key:int):
     global sessions
@@ -72,6 +89,7 @@ def handle_request(message: Message, node_key:int):
                 return Message(Category.Status,3)
             pass
         case Category.Storage:
+            # add storage space
             if message.opcode == 0:
                 mac = sessions[str(node_key)]
                 pc = Computers.GetComputer(mac)
@@ -80,9 +98,15 @@ def handle_request(message: Message, node_key:int):
                 except SizeToLow:
                     return Message(Category.Errors,5,'The Size of the messgae is To Low')
                 return Message(Category.Storage,6)
-
-            # add disk / storage space
-            pass
+            if message.opcode == 7:
+                mac = sessions[str(node_key)]
+                try:
+                    Drives(mac,message.data[0],message.data[1],message.data[2])
+                    return Message(Category.Storage,8)
+                except SumOfDrivesIncompitable:
+                    return Message(Category.Errors,5,'The size of the drive is to high from the space you granted, add more space before')
+                except DeviceAlreadyExsits:
+                    return Message(Category.Errors,6,)   
         case Category.Recovering:
             pass
         case Category.Errors:
@@ -91,6 +115,7 @@ def handle_request(message: Message, node_key:int):
         case _:
             return Message(Category.Errors,3)
             #error in messgae format
+
 
 def handle_requests(message: Message, q: Queue, key:int, id: str):
     try:
@@ -108,14 +133,61 @@ def send_messages(node: Node, q: Queue):
         message, id  = val
         if isinstance(message, Message):
             node.send(message,id)
- 
-    
+
+def request_to_message(req:Query)-> Message:
+    match (req.method):
+        case Requests.Add:
+            request_data = req.data
+            #TODO: add reed-solomon 
+            return Message(Category.Storage,1,(request_data,))
+            # add file
+            pass 
+        case Requests.Delete:
+            # make sure to retrive file path and other importent parameters
+            return Message(Category.Storage,3,)
+            # delete file
+        case Requests.Retrive:
+            # retrive file for client
+            pass
+        case _:
+            # error
+            pass
+
+def get_gui_requests(sem:Semaphore,shr:SharedMemory):
+    global running
+    while running:
+        sem.acquire()
+        req = Query.analyze_request(shr)
+        message = request_to_message(req)
+        reciver = get_reciver(req)
+        messages_q = messages_queues[hash(reciver)]
+        messages_q.put((message, 0)) # might need a lock
+
+def get_reciver(req:Query):
+    if req.method == Requests.Add:
+        wanted_macs = Drives.get_lowest_drive_mac()
+        for mac in wanted_macs:
+            node_found = find_node_by_mac(mac)
+            if node_found is not None:
+                return node_found
+        raise NoNodescurrentluConnected()
+        # get from nodes the ids and then get the desierd drive to add
+    else:
+        raise NotImplementedError("get node from params")
+        
+def find_node_by_mac(mac:str) -> Node:
+    node_keys = [(hash(node),node) for node in nodes]
+    for key in node_keys:
+        if sessions[str(key[0])] == mac:
+            return key[1]
+    return None
 def handle_client(client_soc: socket.socket):
     global nodes
     try:
         end_point = Node(client_soc)
         nodes.append(end_point)
         send_message_queue = Queue()
+        add_queue(hash(end_point),send_message_queue)
         handle_requests_threads = []
         send_msg_thread = Thread(target=send_messages,args=(end_point,send_message_queue))
         send_msg_thread.start()
@@ -128,38 +200,39 @@ def handle_client(client_soc: socket.socket):
                 handle_requests_threads.append(th)
     finally:
         send_message_queue.put('stop')
+        remove_queue(hash(end_point))
         for th in handle_requests_threads:
             th.join()
 
 
-def get_gui_requests(sem:Semaphore,shr:SharedMemory):
-    global running
-    while running:
-        sem.acquire()
-        req = Query.analyze_request(shr)
-        print(req)
-
-
 def main(creds: Tuple[str, int ]):
-    global running
-    server_socket = socket.socket()
-    server_socket.bind(creds)
-    server_socket.listen(5)
-    print('SERVER running...')
-    signal_sem = Semaphore(SIGNAL_SEMAPHORE_NAME)
-    shr = SharedMemory(SHARED_MEMORY_NAME,DEFAULT_SIZE)
-    gui_thread = Thread(target=get_gui_requests,args=(signal_sem,shr))
-    gui_thread.start()
-    while running:
-        soc, addr = server_socket.accept()
-        print('new connection from: '+addr[0]+':'+str(addr[1]))
-        threads = []
-        th = Thread(target=handle_client, args= (soc,))
-        th.start()
-        threads.append(th)
-    for th in threads:
-        th.join()
-        
+    try:
+        global running
+        server_socket = socket.socket()
+        server_socket.bind(creds)
+        server_socket.listen(5)
+        print('SERVER running...')
+        signal_sem = Semaphore(SIGNAL_SEMAPHORE_NAME, initial_value=0)
+        shr = SharedMemory(SHARED_MEMORY_NAME,DEFAULT_SIZE)
+        gui_thread = Thread(target=get_gui_requests,args=(signal_sem,shr))
+        gui_thread.start()
+        while running:
+            soc, addr = server_socket.accept()
+            print('new connection from: '+addr[0]+':'+str(addr[1]))
+            threads = []
+            th = Thread(target=handle_client, args= (soc,))
+            th.start()
+            threads.append(th)
+    except Exception as err:
+        print('got error: ',err)
+        traceback.print_exc()
+    finally:
+        del signal_sem
+        shr.close()
+        server_socket.close()
+        for th in threads:
+            th.join()
+
             
 
             

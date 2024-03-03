@@ -5,10 +5,12 @@ from enums import *
 import server_Exceptions
 from uuid import getnode # for mac adress
 from threading import Thread
+from wmi import WMI
 # constants
 SERVER_IP = '127.0.0.1' #TODO: set default server ip
 SERVER_PORT = 8200 # TODO: Set deafult server port
 MAC = hex(getnode()).encode()# TODO: set it later
+print(MAC)
 FREE_SPACE = 100000 # b'\xa0\x86\x01' in bytes
 LOCATION = Countries.Afghanistan
 
@@ -16,6 +18,33 @@ LOCATION = Countries.Afghanistan
 RUNNING = True
 client_asks = [] # list holding the ids of messages of clients asks
 
+
+def get_physical_drives():
+    c = WMI()
+    physical_drives = c.Win32_DiskDrive()
+    drive_info = []
+    for drive in physical_drives:
+        drive_info.append({
+            'Name': drive.Name,
+            'model': drive.Model,
+            'interface_type': drive.InterfaceType,
+        })
+    return drive_info 
+
+def choose_drive():
+    drives = get_physical_drives()
+    print('Choose the drive you want for the size to be added:')
+    for drive in drives:
+        print(f"{drives.index(drive)+1})\nDevice ID: {drive['Name']} \n    Model: {drive['model']} \n     Interface Type: {drive['interface_type']}")
+    drive_index = input('Drive number: ')
+    if drive_index.isnumeric() and int(drive_index) >0 and int(drive_index)<= len(drives):
+        drive_index = int(drive_index)-1
+        return drives[drive_index]
+    return None
+    
+
+
+        
 
 def init_sign_in(server: Node):
     sign_in_message = Message(Category.Authentication,3,(MAC,))
@@ -43,6 +72,7 @@ def handle_node_asks(node: Node):
     0. exit
     1. delete this pc from the network
     2. add storage to the network
+    3. add drive to storage space
     """
     print(menu)
     res = input('Enter your answer: ')
@@ -64,7 +94,21 @@ def handle_node_asks(node: Node):
             else:
                 print('invalid Input')
                 request = None
+            print('WARNING: the storage system is un-usable until adding drives')
             # add storage
+        case '3':
+            size = input('Enter amount of bytes you can allocate:')
+            drive = choose_drive()
+            if drive is None:
+                print('invalid Input')
+                request = None
+            elif size.isnumeric():
+               # not sure if working
+               drive_type =drive_types[drive['interface_type']]
+               request = Message(Category.Storage,7,(drive_type.value,drive['Name'],size))
+            else:
+                request = None
+                print('Invalid answer')   
         case _:
             request = None
             print('Invalid answer') 
@@ -92,8 +136,11 @@ def handle_mesage(id, message: Message):
 def handle_server_requests(node: Node):
     while RUNNING:
         request, id = node.recive()
-        res = handle_exceptions(request)
-        handle_mesage(id,res)
+        try:
+            res = handle_exceptions(request)
+            handle_mesage(id,res)
+        except Exception as err:
+            print(err.__class__.__name__)
         # handle in here
 
 def main():

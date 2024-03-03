@@ -13,8 +13,6 @@ class DataBaseSession:
         self.db = mc.connect(host = DATABASE_IP, user = USERNAME, password = PASSWORD)
         self.cursor = self.db.cursor()
         self.insert('USE RAID;')
-        
-             
 
     def insert(self,query:str, values: Union[tuple,list]= None) -> None:
         if isinstance(values,list):
@@ -31,3 +29,7 @@ class DataBaseSession:
         else:
             self.cursor.execute(query)
         return self.cursor.fetchall() if all else self.cursor.fetchone()
+     
+    def __delattr__(self):
+        self.cursor.close()
+        self.db.close()
