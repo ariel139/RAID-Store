@@ -1,11 +1,14 @@
 import socket
 from node import Node
+from client_exceptions import *
 from Message import Message
 from enums import *
 import server_Exceptions
 from uuid import getnode # for mac adress
 from threading import Thread
 from wmi import WMI
+from hashlib import sha256
+from typing import Tuple
 # constants
 SERVER_IP = '127.0.0.1' #TODO: set default server ip
 SERVER_PORT = 8200 # TODO: Set deafult server port
@@ -123,16 +126,38 @@ def handle_exceptions(response: Message):
     else:
         return response
     # later handle exceptions
+def check_file_data(file_data:bytes, check_sum: bytes)-> Tuple(bool, bytes) :
+    """
+    checks if the files data that has recived from the server is not coruptted
+    :param file_data the actual data recived
+    :check_sum an hash of the data that has recived from the server
+    :returns Tuple containing (bool, bytes)-> bool if there was a corupption, bytes for the data
+    """
+    created_hash = hashlib.sha256(file_data).hexdigest().encode()
+    if created_hash == check_sum:
+        return True, file_data
+    #check reed-solomon: fix if needed
 
+
+def handle_server_message(message: Message):
+    match message.category:
+        case Category.Storage:
+            if message.opcode == 1:
+                pass
+        case Category.Recovering:
+            pass
+        case _:
+            raise InvalidCategory()
 def handle_mesage(id, message: Message):
     if id in client_asks:
         print(client_out_puts[Category(message.category).name][str(message.opcode)])
         #TODO: add buffer so the stdout and in wont mess up
         client_asks.remove(id)
     else:
+        
         # make sure the message is recived once you have a connection
         print('message recivesd')
-        
+
     
 def handle_server_requests(node: Node):
     while RUNNING:
