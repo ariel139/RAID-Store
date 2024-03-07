@@ -43,9 +43,6 @@ def choose_drive():
     return None
     
 
-
-        
-
 def init_sign_in(server: Node):
     sign_in_message = Message(Category.Authentication,3,(MAC,))
     server.send(sign_in_message)
@@ -132,6 +129,10 @@ def handle_mesage(id, message: Message):
         print(client_out_puts[Category(message.category).name][str(message.opcode)])
         #TODO: add buffer so the stdout and in wont mess up
         client_asks.remove(id)
+    else:
+        # make sure the message is recived once you have a connection
+        print('message recivesd')
+        
     
 def handle_server_requests(node: Node):
     while RUNNING:
