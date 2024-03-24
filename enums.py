@@ -15,6 +15,7 @@ class DriveTypes(Enum):
     IDE='3'
     USB='4'
     _1394 ='5'
+    Null = '6'
 
 drive_types = {
     'SCSI' :DriveTypes.SCSI,
@@ -23,10 +24,6 @@ drive_types = {
     'USB': DriveTypes.USB,
     '1394': DriveTypes._1394
 }
-class Requests(Enum):
-    Add=1
-    Retrive=2
-    Delete=3
 
 class Category(Enum):
     Authentication=1
@@ -34,6 +31,14 @@ class Category(Enum):
     Recovering = 3
     Errors = 4
     Status = 5
+client_blocking_messages={
+    Category.Recovering: [7,9]
+}
+class Requests(Enum):
+    Add=1
+    Retrive=2
+    Delete=3
+
 
 client_out_puts = {
     Category.Authentication.name :{

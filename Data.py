@@ -18,15 +18,17 @@ class Data(DataBaseSession):
         self.parity = data_field[6]
         self.drive = data_field[7]
     
-    def CreateField(self,path: str, user_id:str, drive:int,mac:bytes = MAC, ):
+    def CreateField(self,path: str, user_id:str, drive:int,file_hash: bytes= b'', mac:bytes = MAC, ):
         file_data = self._get_file_data(path)
-        file_hash = sha256(file_data).hexdigest().encode()
+        if file_hash == b'':
+            file_hash = sha256(file_data).hexdigest().encode()
         size = len(file_data)
         parity = False
         self.insert(Data.INSERT_FILED,(file_hash,size,path,user_id,drive,parity))
         rec_id = self._get_latest_record_id()
         return Data(rec_id)
     def _get_latest_record_id(self,):
+        # you may also use LAST_INSERT_ID()
         query = 'SELECT MAX(id) FROM Data'
         id_num = self.fetch(query)
         return id_num

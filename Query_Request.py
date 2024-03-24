@@ -7,7 +7,7 @@ SPLITER = b'*'
 DEFAULT_SIZE = 2**(4*8)-1
 class InvalidParameterError(Exception):
     pass
-class Query:
+class Query_Request:
     def __init__(self, request_type: Requests, file_name:str,memory_view: SharedMemory = None, **kwargs) -> None:
         if 'data' in kwargs.keys():
             self.data = kwargs['data']
@@ -49,7 +49,7 @@ class Query:
             if cnt>= memory.size:
                 raise ValueError('No data in the buffer')
             cnt+=4
-        int_size = Query._get_size(size)
+        int_size = Query_Request._get_size(size)
         data = memory.read(int_size)
         return size + data
     # index = 0
@@ -76,7 +76,7 @@ class Query:
     #     return req_stram
     @staticmethod
     def analyze_request(memory_view:SharedMemory):
-        request = Query._get_request_stream(memory_view)
+        request = Query_Request._get_request_stream(memory_view)
         fields =[]
         index = 0
         for _ in range(4):
@@ -92,5 +92,5 @@ class Query:
             data = fields[3]
         else:
             data = b''
-        return Query(method,file_name,data=data)
+        return Query_Request(method,file_name,data=data)
     
