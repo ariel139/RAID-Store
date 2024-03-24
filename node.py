@@ -37,7 +37,7 @@ class Node:
         size = unpack('H', size)[0]
         return socket.ntohs(size)
     
-    def recive(self,) -> Message:
+    def recive(self,) -> tuple:
         if self._data_stream != b'':
             header_size = self._data_stream
         else:

@@ -13,5 +13,6 @@
             "database": "RAID",
             "username": "ariel"
         }
-    ]
+    ],
+    "cmake.configureOnOpen": false
 }
