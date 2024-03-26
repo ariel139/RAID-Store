@@ -1,3 +1,7 @@
 __pycache__/
-.vscode
+.vscode/
+.vs/
 static
+test_pickeld_q/
+run_all.bat
+environment.yml
