@@ -15,7 +15,7 @@ from drives import Drives
 from RAID import give_drivers, xor_buffers
 from pickle import dumps, loads
 from gc import get_objects
-
+from hashlib import sha256
 MAX_SUB_THREADS = 5
 SIGNAL_SEMAPHORE_NAME = 'sem_signal'
 SHARED_MEMORY_NAME ='shared_memory'
@@ -227,12 +227,16 @@ def send_messages(node: Node, q: Queue):
         if isinstance(message, Message):
             node.send(message,id)
 
-def request_to_message(req:Query_Request)-> Message:
+def request_to_message(req:Query_Request, *args)-> Message:
     match (req.method):
         case Requests.Add:
-            request_data = req.data
+            file_data = req.data
+            file_name = req.file_name
+            file_hash = sha256(file_data).hexdigest()
+            if isinstance(args[0], str):
+                desierd_drive = args[0].encode()
             #TODO: add reed-solomon 
-            return Message(Category.Storage,1,(request_data,))
+            return Message(Category.Storage,1,(file_data,file_hash,file_name, desierd_drive))
             # add file
             pass 
         case Requests.Delete:
@@ -251,7 +255,7 @@ def get_gui_requests(sem:Semaphore,shr:SharedMemory):
     while running:
         sem.acquire()
         req = Query_Request.analyze_request(shr)
-        message = request_to_message(req)
+        # message = request_to_message(req)
         reciver = handle_request_q(req)
         # messages_q = messages_queues[hash(reciver)]
         # messages_q.put((message, 0)) # might need a lock
@@ -268,11 +272,14 @@ def handle_request_q(req:Query_Request):
             if mac in all_macs:
                 drive_id = id
                 drives_mac = mac
+                break
         if drive_id is None and drives_mac is None:
-            raise NoNodescurrentlyConnected() #TODO: handle response to gui
+            print('NoNodescurrentlyConnected()') #TODO: handle response to gui
+            return
         node = find_node_by_mac(drives_mac)
-        msg = request_to_message(req)
-        messages_q = messages_queues[hash(node)]
+        drive = Drives.get_drive_by_id(drive_id)
+        msg = request_to_message(req, drive[3])
+        messages_q = messages_queues[str(hash(node))]
         messages_q.put((msg, 0)) # might need a lock
         # get from nodes the ids and then get the desierd drive to add
         if len(all_macs) >=3:
@@ -313,7 +320,7 @@ def handle_client(client_soc: socket.socket):
         send_message_queue.put('stop')
         remove_queue(hash(end_point))
         session_locker.acquire()
-        del sessions[hash(end_point)]
+        del sessions[str(hash(end_point))]
         session_locker.release()
         nodes_locker.acquire()
         nodes.remove(end_point)

@@ -46,7 +46,7 @@ def process_file():
             file_name = file.filename
             print(file_name)
             file_data = file.read()
-            req = query.Query(Requests.Add,file_name,data=file_data, memory_view=shr)
+            req = query.Query_Request(Requests.Add,file_name,data=file_data, memory_view=shr)
             req_msg = req.build_req()
             signal_sem.release()
             
