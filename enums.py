@@ -16,7 +16,7 @@ class DriveTypes(Enum):
     USB='4'
     _1394 ='5'
     Null = '6'
-
+    
 drive_types = {
     'SCSI' :DriveTypes.SCSI,
     'HDC': DriveTypes.HDC,
@@ -24,7 +24,24 @@ drive_types = {
     'USB': DriveTypes.USB,
     '1394': DriveTypes._1394
 }
+class FileSystems(Enum):
+    NTFS = '1'
+    FAT = '2'
+    exFAT = '3'
+    ReFS = '4'
+    UDF = '5'
+    CDFS = '6'
+    DFS = '7'
 
+file_systems = {
+    'NTFS' : FileSystems.NTFS,
+    'ReFS' : FileSystems.ReFS,
+    'exFAT' : FileSystems.exFAT,
+    'CDFS' : FileSystems.CDFS,
+    'FAT' : FileSystems.FAT,
+    'UDF' : FileSystems.UDF,
+    'DFS' : FileSystems.DFS,
+}
 class Category(Enum):
     Authentication=1
     Storage = 2
@@ -32,7 +49,12 @@ class Category(Enum):
     Errors = 4
     Status = 5
 client_blocking_messages={
-    Category.Recovering: [7,9]
+    Category.Recovering: [7,9],
+    Category.Authentication:[],
+    Category.Errors : [],
+    Category.Status: [],
+    Category.Storage: [],
+
 }
 class Requests(Enum):
     Add=1
