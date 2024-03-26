@@ -1,0 +1,5 @@
+wmi
+uuid
+threading
+hashlib
+typing

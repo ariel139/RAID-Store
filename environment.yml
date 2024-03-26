@@ -1,0 +1,17 @@
+name: raid
+channels:
+  - defaults
+dependencies:
+  - flask
+  - mysql-connector-python
+  - python=3.11
+  - conda==23.11.0
+  - setuptools
+  - pip
+  - wheel
+  - conda-content-trust
+  - conda-libmamba-solver
+  - menuinst
+  - console_shortcut_miniconda
+  - powershell_shortcut_miniconda
+prefix: E:\miniconda
