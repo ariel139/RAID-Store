@@ -1,3 +1,4 @@
+front_app/__pycache__/
 __pycache__/
 .vscode/
 .vs/
@@ -5,3 +6,5 @@ static
 test_pickeld_q/
 run_all.bat
 environment.yml
+used_macs
+*.json

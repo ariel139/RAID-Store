@@ -3,7 +3,7 @@ from Message import Message
 from struct import  unpack
 class Node:
     MAX_RECIVE_SIZE = 1024
-    SIZE_HEADER_SIZE = 2
+    SIZE_HEADER_SIZE = 4
     def __init__(self,soc: socket.socket):
         self.soc = soc
         self._debug = True
@@ -19,6 +19,9 @@ class Node:
         
     
     def send(self, message: Message, id:int = 0):
+        if message is None:
+            print(f'Message with ID: {id} did not sent beacuse of None')
+            return
         if id == 0:
             id = self._generate_id()
         else:
@@ -27,15 +30,15 @@ class Node:
         self.soc.sendall(message_data)
         if self._debug:
             print('---DEBUG--- SENT:')
-            print(message_data)
+            print(message_data[:max(100,len(message_data))])
         self.messages[id] = message
         return id
     
     @staticmethod
     def _get_size(data_stream: bytes):
-        size = data_stream[:2]
-        size = unpack('H', size)[0]
-        return socket.ntohs(size)
+        size = data_stream[:4]
+        size = unpack('I', size)[0]
+        return socket.ntohl(size)
     
     def recive(self,) -> tuple:
         if self._data_stream != b'':
@@ -49,7 +52,7 @@ class Node:
         while len(data) < int_size+Node.SIZE_HEADER_SIZE:
             data += self.soc.recv(Node.MAX_RECIVE_SIZE)
         if len(data) > int_size+Node.SIZE_HEADER_SIZE:
-            self._data_stream += data[int_size:]
+            self._data_stream += data[int_size+Node.SIZE_HEADER_SIZE:]
         
         message, id =  Message.parse_response(data)
         if id in self.messages:

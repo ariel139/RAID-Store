@@ -10,18 +10,32 @@ from subprocess import check_output
 from hashlib import sha256
 import platform
 from traceback import print_exc
-from os import getcwd
+from os import getcwd, makedirs, scandir
 from base64 import b64encode, b64decode
 from pathlib import Path
+from random_mac_i import get_mac
 if platform.system() == 'Windows':
     from wmi import WMI
 from json import *
-
+from jqpy import jq
+from sys import argv
+from mmap import PAGESIZE
+from os.path import getsize
+from struct import pack
 # constants
+DEBUG = True
 FILES_PATH = ''
 SERVER_IP = '10.100.102.204' #TODO: set default server ip
 SERVER_PORT = 8200 # TODO: Set deafult server port
-MAC = hex(getnode()).encode()# TODO: set it later
+CHUNCK_SIZE = PAGESIZE *100
+if DEBUG:
+    print(argv)
+    if len(argv) >=2:
+        MAC = hex(int(argv[1])).encode()
+    else:
+        MAC = hex(131176846729400).encode()# TODO: set it later
+else:
+    MAC = hex(getnode()).encode()# TODO: set it later
 print(MAC)
 FREE_SPACE = 100000 # b'\xa0\x86\x01' in bytes
 LOCATION = Countries.Afghanistan
@@ -43,10 +57,14 @@ def get_physical_drives_windows():
     return drive_info 
 
 def get_physical_drives_linux():
-    lsblk_output = check_output(['lsblk', '-b', '-n', '-J', '--output', 'NAME,MODEL,TRAN']).decode()
-    lsblk_output = lsblk_output.replace('tran','interface_type' )
-    drives = loads(lsblk_output)['blockdevices']
-    return drives
+    #-l
+    qury = "lsblk -n -J -l --output NAME,MODEL,TRAN,mountpoint,size"
+    lsblk_output = check_output(qury.split(' ')).decode()
+    print(lsblk_output)
+    formated_output = jq('[.blockdevices[]|select(.mountpoint==null)]',loads(lsblk_output))[0]
+    print(formated_output)
+    # lsblk_output = lsblk_output.replace('tran','interface_type' )
+    return formated_output
 def choose_drive():
     if platform.system() == 'Linux':
         drives = get_physical_drives_linux()
@@ -87,7 +105,7 @@ def init_sign_in(server: Node):
             server.send(sign_up)
         
 def handle_node_asks(node: Node):
-    global RUNNING, client_asks
+    global RUNNING, client_asks, DEBUG
     menu = """What Do You Wish To DO:
     0. exit
     1. delete this pc from the network
@@ -164,41 +182,133 @@ def check_file_data(file_data:bytes, check_sum: bytes):
         return True, file_data
     #check reed-solomon: fix if needed
 
-def send_drive(node: Node, q_id, drive_name: str):
-    pass
+def get_data_from_file(path, start_index,end_index=-1):
+    with open(path, 'rb') as file:
+        full_buffer = file.read()
+        if end_index == -1:
+            return full_buffer[start_index:]
+        return full_buffer[start_index:end_index]
 
-def add_meta_data(file_name:str,file_hash:str, path):
-    with open(FILES_PATH, 'wb') as file:
-        file_meta_data = {
+
+def get_data_chunk(start_index, end_index, drive_name):
+    file_sizes = create_file_sizes_dict(drive_name.decode())
+    files_sum = 0
+    start_indecie = False
+    end_indecie= False
+    data_stream = b''
+    for file in file_sizes:
+        size = file['size']
+        path = file['path']
+        files_sum+=size
+        if not start_indecie:
+            if start_index < files_sum:
+                start_indecie = path, start_index - (files_sum-size)
+        if end_index <= files_sum and not end_indecie:
+            end_indecie = path, end_index- (files_sum-size)
+        if start_indecie and end_indecie:
+            if start_indecie[0] == end_indecie[0]:
+                return get_data_from_file(start_indecie[0], start_indecie[1],end_indecie[1])
+            data_stream += get_data_from_file(end_indecie[0],0,end_indecie[1])
+            return data_stream
+        if start_indecie and not end_indecie:
+            if len(data_stream) ==0:
+                data_stream+= get_data_from_file(path,start_indecie[1])
+            else:
+                data_stream+= get_data_from_file(path,0)
+    return data_stream
+
+
+
+def get_dir_size(path='.'):
+    total = 0
+    with open(FILES_PATH,'r') as file:
+        data = load(file)
+    for file in data:
+        total+=int(file['size'])
+    return total
+
+
+    
+def create_file_sizes_dict(drive_name:str):
+    with open(FILES_PATH,'r') as file:
+        data = load(file)
+    dict = []
+    for file in data:
+        if file['drive name'] == drive_name:
+            dict.append({'path': file['path'], 'size':int(file['size'])})
+    return dict
+def send_drive(node: Node, q_id, drive_name: str):
+    cnt = 0
+    data_path = Path(f'{drive_name.decode()}/raid_{drive_name.decode()[:-1]}')
+    drive_size = get_dir_size(data_path)
+    while cnt < drive_size:
+        chunk_data=get_data_chunk(cnt,cnt+CHUNCK_SIZE, drive_name)
+        cnt+= len(chunk_data)
+        is_done = True if cnt>= drive_size else False # wether its the last chunck in the sequnce
+        msg = Message(Category.Recovering,8,(q_id,MAC,drive_name, pack('?',is_done), chunk_data))
+        node.send(msg)
+        print(f'sent chunk number {str(cnt //CHUNCK_SIZE)} / {str(drive_size//CHUNCK_SIZE)}')
+
+def add_meta_data(file_name:str,file_hash:str, path,drive_name:str):
+    file_meta_data = {
             'file name': file_name,
             'file hash': file_hash,
-            'path': path
+            'path': str(path),
+            'drive name' : drive_name,
+            'size': str(getsize(str(path)))
         }
-        try:
+    try:
+        with open(FILES_PATH, 'rb') as file:
             curr = load(file)
-        except JSONDecodeError:
-            file_meta_data = [file_meta_data]
-        else:
+    except JSONDecodeError:
+        file_meta_data = [file_meta_data]
+    except FileNotFoundError:
+        file_meta_data = [file_meta_data]
+    else:
+        got = False
+        for file in curr:
+            if file['path'] == file_meta_data['path'] and file_hash == file['file hash']:
+                file['size'] = str(int(file['size'])+int(file_meta_data['size']))
+                got = True
+                break
+        if not got:
             curr.append(file_meta_data)
-            file_meta_data = curr
-        dump(FILES_PATH,file_meta_data)
-def save_file(data:bytes, file_name: str, file_hash: str, drive_name:str):
+        file_meta_data = curr
+    with open(FILES_PATH,'w') as file:
+        dump(file_meta_data,file, indent=4)
+    
+
+def save_file(data:bytes, file_name: str, file_hash: str, drive_name:str) -> Path:
     #TODO: set the deafult directory for file saving on each drive to be: 'raid_{drive name}'
-    # the file name for each file in the directory will be: sha256(file_name+B64(file_data))
-    saved_name = sha256(file_name+b64encode(data)).hexdigest()
-    saved_path = Path(f'{drive_name}/raid_{drive_name}/{saved_name}')
-    add_meta_data(file_name,file_hash,saved_path)
-    with open(saved_path, 'wb') as file:
+    #TODO: check duplicateds files
+    # the file name for each file in the directory will be: sha256(file_name+file_data)
+    saved_name = sha256(file_name.encode()+data).hexdigest()
+    saved_path_directoris = Path(f'{drive_name.decode()}/raid_{drive_name.decode()[:-1]}')
+    full_path = Path(f'{drive_name.decode()}/raid_{drive_name.decode()[:-1]}/{saved_name}')
+    #TODO: change appropriate full path to linux NOT: sda/raid_sda...
+    makedirs(saved_path_directoris, exist_ok=True)
+    with open(full_path, 'ab') as file:
         file.write(data)
-        
+    add_meta_data(file_name,file_hash,full_path,drive_name.decode())
+    return full_path
+  
 def handle_server_message(message: Message, node: Node):
     match Category(message.category):
         case Category.Storage:
             if message.opcode == 1:
-                save_file(message.data[0],message.data[2],message.data[1],message.data[3])
+                path_saved = save_file(message.data[0],message.data[2].decode(),message.data[1].decode(),message.data[3])
+                print('save_file')
+                return Message(Category.Storage,2,(str(path_saved).encode(),message.data[-1]))
         case Category.Recovering:
             if message.opcode == 7:
-                return send_drive(node, message.data[0], message.data[1])
+                try:
+                    return send_drive(node, message.data[0], message.data[1])
+                except FileNotFoundError:
+                    return Message(Category.Errors,4,('Disk is Empty'))                
+            elif message.opcode == 10:
+                print('got heere asdasdasdasdasdasd')
+                file_hash = sha256(message.data[1]).hexdigest()
+                save_file(message.data[1],file_hash,file_hash, message.data[0])
         case _:
             raise InvalidCategory()
 def handle_mesage(id, message: Message, node: Node):
@@ -207,7 +317,8 @@ def handle_mesage(id, message: Message, node: Node):
         #TODO: add buffer so the stdout and in wont mess up
         client_asks.remove(id)
     else:
-        return handle_server_message(message, node)
+        res = handle_server_message(message, node) # res must be of type message
+        node.send(res)
     
 def handle_server_requests(node: Node):
     threads = []
@@ -216,7 +327,8 @@ def handle_server_requests(node: Node):
         try:
             res = handle_exceptions(request)
             if request.opcode in client_blocking_messages[Category(request.category)]:
-                handle_mesage(id,res) 
+                res = handle_mesage(id,res,node) 
+                node.send(res)
             else:
                 th = Thread(target= handle_mesage, args=(id,request, node))
                 th.start()# make a thread for this normaly, only for none blocking funcs
@@ -239,7 +351,7 @@ def main():
     # TODO: add the threads shit
     FILES_PATH = input(f'ENTER path to metadata of files JSON (default: {getcwd()}\\{MAC.decode()}.json): ')
     if FILES_PATH == '':
-        FILES_PATH = Path(f'{getcwd()}\\{MAC.decode()}.json')
+        FILES_PATH = Path(f'{getcwd()}/{MAC.decode()}.json')
     server_reqs_th = Thread(target= handle_server_requests, args=(node,))
     server_reqs_th.start()
     while RUNNING:

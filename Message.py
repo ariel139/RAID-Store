@@ -8,14 +8,14 @@ class Message:
         self.category = category.value
         self.opcode = opcode
         if isinstance(data,bytes):
-            size = pack('H',socket.htons(len(data) + 3))
+            size = pack('I',socket.htonl(len(data) + 3))
             self.data = self._get_params(data)       
         else:
             self.data = data
             self._init_tup()
         if not size:
             self.size = Message._get_tuple_size(self.data)
-            self.size = pack('H', socket.htons(self.size+3))
+            self.size = pack('I', socket.htonl(self.size+3))
         else:
             self.size = size
     
@@ -35,7 +35,7 @@ class Message:
     def _get_tuple_size(tup:tuple):
         size = 0
         for i in tup:
-            size += len(i)+2
+            size += len(i)+4
         return size
     @staticmethod
     def _parse_id(id: int): 
@@ -44,28 +44,28 @@ class Message:
     
     @classmethod
     def parse_response(self,data:bytes):
-        size = socket.ntohs(unpack('H',data[:2])[0]).to_bytes(2,'big')
-        cat_op = data[2]
+        size = socket.ntohl(unpack('I',data[:4])[0]).to_bytes(4,'big')
+        cat_op = data[4]
         opcode = cat_op & 15# not sure if mask needed ^ b'\xe0'
         catergory = (cat_op & 240) >> 5
-        id = socket.ntohs(unpack('H', data[3:5])[0])
-        params = self._get_params(self, data[5:])
+        id = socket.ntohs(unpack('H', data[5:7])[0])
+        params = self._get_params(self, data[7:])
         return Message(Category(catergory),opcode,params, size= size), id
     
     @staticmethod
     def _create_params(data:tuple)-> bytes:
         params = b''
         for obj in data:
-            params+= len(obj).to_bytes(2,'little') + obj
+            params+= len(obj).to_bytes(4,'little') + obj
         return params
     def _get_params(self,data: bytes)-> tuple:
         index = 0
         params = []
         while index < len(data):
-            size = int.from_bytes(data[index:index+2],'little')
-            param = data[index+2:index+2+size]
+            size = int.from_bytes(data[index:index+4],'little')
+            param = data[index+4:index+4+size]
             params.append(param)
-            index+=size+2
+            index+=size+4
         return tuple(params)
     def build_message(self, id : Union[int, bytes]):
         if isinstance(id, int):
@@ -74,6 +74,8 @@ class Message:
         cat_op = pack('c',cat_op.to_bytes(1,'little')) # dosent matter if ig or little beacuse one byte
         return self.size + cat_op + id + self._create_params(self.data)
 
+    def __repr__(self) -> str:
+        return f'Category {str(self.category)} opcode {str(self.opcode)}, data length: {len(self.data)}, message size {self.size}'
     def __hash__(self) -> int:
         return hash(self)
     

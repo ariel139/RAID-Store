@@ -32,3 +32,6 @@ class DeviceAlreadyExsits(Exception):
 
 class QueueObjectNotFound(Exception):
     pass # indicated that the q object did not get found in the garbage coollector
+
+class NotEnoghDrivesConnected(Exception):
+    pass

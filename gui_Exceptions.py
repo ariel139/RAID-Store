@@ -5,6 +5,5 @@ class WrongPassword(Exception):
 
 class NoDataInRequest(Exception):
     pass
-
 class UserMustBeConnected(Exception):
     pass

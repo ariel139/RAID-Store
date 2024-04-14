@@ -54,7 +54,7 @@ class Drives(DataBaseSession):
         del db
         return drive
     
-    
+        
     @staticmethod
     def get_all_drives_by_mac(mac):
         db = DataBaseSession()
@@ -92,6 +92,8 @@ class Drives(DataBaseSession):
         del db # just for clearence
         return ans
         # returns the dr
+    def get_drive_used_size(drive_id:int):
+        raise NotImplementedError()
 
 if __name__ == "__main__":
     # drive = Drives('0xccd9ac32d1f7',1,'test22',10000)

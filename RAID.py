@@ -81,20 +81,14 @@ def get_allocated_drives(sessions: dict)-> tuple:
     
 def check_used(drive_mac: str):
     pass
-def give_drivers(driver, drivers:list):
-    for dr in drivers:
+def give_drivers(driver, drives:list):
+    for dr in drives:
         if dr[0] == driver[0]:
-            drivers.remove(dr)
-
-    drivers.sort(key=lambda test_driver: test_driver[4])
-    # check if the diffrence between the size of the biggest and lowest drive is mor then 10 precnte the the drive given
-    check_diffrance = lambda d1_size, d2_size: True if (abs(d1_size-d2_size) / d2_size) < 0.1 else False 
-    result = []
-    for drive in drivers:
-        if not check_diffrance(driver[5], drive[4]):
-            break
-        result.append(drive)
-    return result
+            drives.remove(dr)
+    #BUG: the left space filed in the drive is related as the occuipied space
+    # drives.sort(key=lambda test_driver: test_driver[4])
+    #TODO: upgrade so the drives that are returend would be similer in occupied space
+    return drives
     # min_driver1 = min(drivers, key=lambda test_driver: test_driver[4])
     # drivers.remove(min_driver1)
     # min_driver2 = min(drivers, key=lambda test_driver: test_driver[4])
@@ -108,7 +102,8 @@ def xor_buffers(res_tup:tuple):
     xor_dll.xor_buffers.argtypes = [ctypes.POINTER(ctypes.POINTER(ctypes.c_ubyte)), ctypes.c_size_t, ctypes.c_size_t, ctypes.POINTER(ctypes.c_ubyte)]
     res = convert_buffers(res_tup)
     result = (ctypes.c_ubyte * len(res_tup[1]))()
-    return xor_dll.xor_buffers(res, ctypes.c_size_t(len(res_tup)), ctypes.c_size_t(len(res_tup[0])), result)
+    xor_dll.xor_buffers(res, ctypes.c_size_t(len(res_tup)), ctypes.c_size_t(len(res_tup[0])), result)
+    return bytes(result)
 
 
 def convert_buffer(buffer:bytes):

@@ -21,13 +21,14 @@ SHARED_MEMORY_NAME ='shared_memory'
 SIGNAL_SEMAPHORE_NAME = 'sem_signal'
 shr = SharedMemory(SHARED_MEMORY_NAME,query.DEFAULT_SIZE)
 signal_sem = Semaphore(SIGNAL_SEMAPHORE_NAME,0,1)
-
+user = None
 @app.route("/")
 def signin():
     return render_template('pages/signin.html')
 
 @app.route('/signin', methods = ['POST'])
 def sign_in():
+    global user
     user_id = request.form.get('user_id')
     password = request.form.get('password')
     try:
@@ -40,24 +41,31 @@ def sign_in():
 
 @app.route('/upload_file', methods=['POST'])
 def process_file():
+    global user
     try:
+        if user is None: raise UserMustBeConnected()
         if 'file' in request.files:
             file = request.files['file']
             file_name = file.filename
             print(file_name)
             file_data = file.read()
-            req = query.Query_Request(Requests.Add,file_name,data=file_data, memory_view=shr)
-            req_msg = req.build_req()
-            signal_sem.release()
+            if len(file_data)>0 :
+                data_stream = user.user_name.encode()+b'*'+file_data
+                req = query.Query_Request(Requests.Add,file_name,data=data_stream, memory_view=shr)
+                req_msg = req.build_req()
+                signal_sem.release()
             
         else:
             return render_template('pages/popup.html', message_head='Server Upload Error', message='Could not upload file')
     except OverflowError:
         print('file to big. file size: ', str(len(file_data)))
         return render_template('pages/popup.html', message_head='Server Upload Error', message='Could not upload file. File To Large')
+    except UserMustBeConnected:
+        return render_template('pages/popup.html', message_head='Not Connected', message='Must sign in first')
     except Exception as err:
         traceback.print_exc()
         return render_template('pages/popup.html', message_head='Server Upload Error', message='Genreral server error')
+   
     print('succesed')
     return render_template('pages/upload.html')
 

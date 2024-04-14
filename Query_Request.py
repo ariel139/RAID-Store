@@ -44,7 +44,7 @@ class Query_Request:
     def _get_request_stream(memory: SharedMemory):
         size = memory.read(4)
         cnt=0
-        while size == b'\x00\x00':
+        while size == b'\x00\x00\x00\x00':
             size = memory.read(4)
             if cnt>= memory.size:
                 raise ValueError('No data in the buffer')
@@ -82,6 +82,9 @@ class Query_Request:
         for _ in range(4):
             f_index = request.find(SPLITER, index)
             if f_index == -1:
+                fields.append(request[index:])
+                break
+            elif len(fields)>=3:
                 fields.append(request[index:])
                 break
             fields.append(request[index:f_index])

@@ -16,6 +16,12 @@ from RAID import give_drivers, xor_buffers
 from pickle import dumps, loads
 from gc import get_objects
 from hashlib import sha256
+from Data import Data
+from AES_manager import AESCipher
+from User import User
+from struct import unpack
+
+CHUNK_SIZE = 1_000_000
 MAX_SUB_THREADS = 5
 SIGNAL_SEMAPHORE_NAME = 'sem_signal'
 SHARED_MEMORY_NAME ='shared_memory'
@@ -72,48 +78,61 @@ def xor_drives(drives_buffers: dict):
     for _,buffer in drives_buffers.items():
         if len(buffer) <=0:
             return
-    slicer_index = len(min(drives_buffers.items(), key = lambda value: len(value[1]))[1])
-    to_xor = [buf[1][:slicer_index] for buf in drives_buffers.items()]
+    slicer_index = min([len(value) for key, value in drives_buffers.items()])
+    to_xor = [buf[:slicer_index] for key, buf in drives_buffers.items()]
     for i in drives_buffers.keys():
         drives_buffers[i] = drives_buffers[i][slicer_index:]
     return xor_buffers(tuple(to_xor))
 
-def xor_data(q: Queue, res_drive: tuple)->bytes:
+def xor_data(q: Queue, res_drive: tuple, drives_amount)->bytes:
     drives_buffers = {}
     parity_node = find_node_by_mac(res_drive[0])
-    dones = []
+    dones = set()
     while True:
-        drive_info, data,done = q.get()
-        if done:
-            dones.append(drive_info)
-        if drive_info in drives_buffers.keys():
-            drives_buffers[drive_info]+=data
-        else: drives_buffers[drive_info] = data
-        if drive_info in drives_buffers.keys():
-            if drive_info in dones and len(drives_buffers[drive_info]) == 0:
-                del drives_buffers[drive_info]
-        xord_data_buffer = xor_drives(drives_buffers)
-        if xord_data_buffer is not None:
-            parity_node.send(xord_data_buffer)
-        if len(drives_buffers.keys()) == 0:
-            break
+        if not q.empty():
+            mac, drive_info, done, data = q.get()
+            drive_idef = sha256(mac.encode()+drive_info.encode()).hexdigest()
+            if done:
+                dones.add(drive_idef)
+            if drive_idef in drives_buffers.keys():
+                drives_buffers[drive_idef]+=data
+            else: 
+                drives_buffers[drive_idef] = data
+        if len(drives_buffers) >= drives_amount:
+            xord_data_buffer = xor_drives(drives_buffers)
+            if xord_data_buffer is not None:
+                #TODO: add parity record to Data table
+                msg = Message(Category.Recovering,10,(res_drive[3], xord_data_buffer))
+                parity_node.send(msg)
+        if len(dones) == len(drives_buffers.keys()) and len(dones)>0:
+            real_done = True
+            for key, data in drives_buffers.items():
+                if len(data) > 0:
+                    real_done = False
+            if real_done:
+                break
 
 
 def create_parity(drives:list):
     # d_1 + d_2 are getting xor'd
     #d_3 get the result
-    result_drive = max(drives, key= lambda drive: drive[4])
-    nodes = []
+    if len(drives) <3:
+        raise NotEnoghDrivesConnected()
+    parity_drive = max(drives, key= lambda drive: drive[4])
+    #BUG: left space is thinked as how much is occupied by the drive 
+    nodes_drives = []
     for drive in drives:
-        nodes.append(find_node_by_mac(drive[0]))
+        if drive == parity_drive:
+            continue
+        nodes_drives.append((find_node_by_mac(drive[0]),drive))
     reciving_q = Queue()
     pickeld_q_id = dumps(id(reciving_q))
         # messages_q.put((message, 0)) # might need a lock
-    for node,drive in zip(nodes,drives):
-        node_msg_q = messages_queues[hash(node)]
+    for node,drive in nodes_drives:
+        node_msg_q = messages_queues[str(hash(node))]
         msg = Message(Category.Recovering,7,(pickeld_q_id,drive[3])) # in client side get by name and mac from db
-        node_msg_q.put((0,msg))
-    xor_data(reciving_q, result_drive)
+        node_msg_q.put((msg, 0))
+    xor_data(reciving_q, parity_drive, len(nodes_drives))
     # .# node_2.send(msg_req_2)
     
 
@@ -126,20 +145,22 @@ def add_storage(data):
     node.send(data)
     if len(all_macs) >=3:
         all_drives = [drive if drive[0] in all_macs else None for drive in Drives.get_all_drives()]
-        drives = give_drivers(drive_to_put,all_drives)
-        create_parity(drives)
+        if len(all_drives) > 3:
+            drives = give_drivers(drive_to_put,all_drives)
+            create_parity(drives)
 
 def handle_chuncked_data(msg: Message):
-    q_id = loads(msg.data[0].decode())
-    drive_id  = msg.data[1].decode()
+    q_id = loads(msg.data[0])
+    mac = msg.data[1].decode()
+    drive_name  = msg.data[2].decode()
     q = None
     for obj in get_objects():
         if id(obj) == q_id:
             q = obj
             break
     if q is None: raise QueueObjectNotFound('Could not find q object')
-    q.put((drive_id, msg.data[1]))
-    return Message(Category.Recovering,9,(msg.data[0],msg.data[1]))
+    q.put((drive_name,mac, unpack('?',msg.data[3])[0], msg.data[4]))
+    return None
 
 
 def handle_request(message: Message, node_key:int):
@@ -190,20 +211,24 @@ def handle_request(message: Message, node_key:int):
                 except SizeToLow:
                     return Message(Category.Errors,5,'The Size of the messgae is To Low')
                 return Message(Category.Storage,6)
-            if message.opcode == 7:
+            elif message.opcode == 2:
+                Data.update_path_filed(int(message.data[1].decode()),message.data[0].decode())
+                print('got file ACK ')
+            elif message.opcode == 7:
                 mac = sessions[str(node_key)]
                 try:
                     Drives(mac,message.data[0],message.data[1],message.data[2])
                     return Message(Category.Storage,8)
                 except SumOfDrivesIncompitable:
-                    return Message(Category.Errors,5,'The size of the drive is to high from the space you granted, add more space before')
+                    return Message(Category.Errors,5,('The size of the drive is to high from the space you granted, add more space before',))
                 except DeviceAlreadyExsits:
                     return Message(Category.Errors,6,)   
         case Category.Recovering:
             if message.opcode == 8:
                 return handle_chuncked_data(message)
         case Category.Errors:
-            #may not be used
+            if message.opcode == 4:
+                print(message.data[0].decode())
             pass
         case _:
             return Message(Category.Errors,3)
@@ -226,6 +251,8 @@ def send_messages(node: Node, q: Queue):
         message, id  = val
         if isinstance(message, Message):
             node.send(message,id)
+        else:
+            print(f'did not send message {str(message)}')
 
 def request_to_message(req:Query_Request, *args)-> Message:
     match (req.method):
@@ -235,8 +262,10 @@ def request_to_message(req:Query_Request, *args)-> Message:
             file_hash = sha256(file_data).hexdigest()
             if isinstance(args[0], str):
                 desierd_drive = args[0].encode()
+            if not args[1]:
+                raise ValueError('missing data files id')
             #TODO: add reed-solomon 
-            return Message(Category.Storage,1,(file_data,file_hash,file_name, desierd_drive))
+            return Message(Category.Storage,1,(file_data,file_hash,file_name, desierd_drive,args[1].encode()))
             # add file
             pass 
         case Requests.Delete:
@@ -253,38 +282,51 @@ def request_to_message(req:Query_Request, *args)-> Message:
 def get_gui_requests(sem:Semaphore,shr:SharedMemory):
     global running
     while running:
-        sem.acquire()
-        req = Query_Request.analyze_request(shr)
-        # message = request_to_message(req)
-        reciver = handle_request_q(req)
+        try:
+            sem.acquire()
+            req = Query_Request.analyze_request(shr)
+            # message = request_to_message(req)
+            reciver = handle_request_q(req)
+        except Exception as err:
+            traceback.print_exc()
         # messages_q = messages_queues[hash(reciver)]
         # messages_q.put((message, 0)) # might need a lock
 
+def get_right_drive(connected_macs:list, drives_macs: list):
+    drive_id = None
+    drives_mac = None
+    for id, mac in drives_macs:
+        if mac in connected_macs:
+            drive_id = id
+            drives_mac = mac
+            break
+    return drive_id, drives_mac
 def handle_request_q(req:Query_Request):
     if req.method == Requests.Add:
         session_locker.acquire()
         all_macs = [sessions[key] for key in sessions]
         session_locker.release()
         macs_drives_lst = Drives.get_max_left_drive_and_mac()
-        drive_id = None
-        drives_mac = None
-        for id, mac in macs_drives_lst:
-            if mac in all_macs:
-                drive_id = id
-                drives_mac = mac
-                break
+        #TODO: change left size in the drive
+        drive_id, drives_mac = get_right_drive(all_macs, macs_drives_lst)
         if drive_id is None and drives_mac is None:
             print('NoNodescurrentlyConnected()') #TODO: handle response to gui
             return
         node = find_node_by_mac(drives_mac)
         drive = Drives.get_drive_by_id(drive_id)
-        msg = request_to_message(req, drive[3])
+        user_id = bytearray(req.data[:req.data.find(b'*')])
+        aes_key = User.get_AES_key_by_id(user_id.decode())
+        aes_obj = AESCipher(aes_key)
+        req.data = aes_obj.encrypt(req.data[req.data.find(b'*')+1:])
+        d_id = str(Data.CreateFieldNoPath(user_id.decode(),drive_id,sha256(req.data).hexdigest(),len(req.data)).id_num[0])
+        msg = request_to_message(req, drive[3], d_id)
         messages_q = messages_queues[str(hash(node))]
         messages_q.put((msg, 0)) # might need a lock
         # get from nodes the ids and then get the desierd drive to add
         if len(all_macs) >=3:
-            all_drives = [drive if drive[0] in all_macs else None for drive in Drives.get_all_drives()]
-            drives = give_drivers(Drives.get_drive_by_id(drive_id),all_drives)
+            all_drives = Drives.get_all_drives()
+            filterd_drives = list(filter(lambda drive: drive[0] in all_macs, all_drives))
+            drives = give_drivers(Drives.get_drive_by_id(drive_id),filterd_drives)
             create_parity(drives)
     else:
         raise NotImplementedError("get node from params")
@@ -332,6 +374,7 @@ def handle_client(client_soc: socket.socket):
 def main(creds: Tuple[str, int ]):
     try:
         global running
+        signal_sem = None
         server_socket = socket.socket()
         server_socket.bind(creds)
         server_socket.listen(5)
@@ -351,7 +394,8 @@ def main(creds: Tuple[str, int ]):
         print('got error: ',err)
         traceback.print_exc()
     finally:
-        del signal_sem
+        if signal_sem is not None:
+            del signal_sem
         shr.close()
         server_socket.close()
         for th in threads:
