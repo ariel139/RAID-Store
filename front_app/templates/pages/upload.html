@@ -9,10 +9,19 @@
 <body>
 
   <div class="sidebar">
-    <button class="menu-button" onclick="toggleButtonColor(this)">Welcome Ariel</button>
-    <button class="menu-button" onclick="toggleButtonColor(this)">Dash Board & stats</button>
-    <button class="menu-button" onclick="toggleButtonColor(this)">Upload Data</button>
-    <button class="menu-button" onclick="toggleButtonColor(this)">Contact</button>
+    <form class="menu-form" action="settings" method="get">
+      <button type="submit" class="menu-button" name = "/settings" onclick="toggleButtonColor(this)">Welcome Ariel</button>
+    </form>
+    <form class="menu-form" action="/dash_board" method="get">
+      <button type="submit" class="menu-button" name="/dash_board"onclick="toggleButtonColor(this)">Dash Board & stats</button>
+    </form>
+    <form class="menu-form" action="/upload_file" method="get">
+      <button type="submit" class="menu-button" name="/upload_file" onclick="toggleButtonColor(this)">Upload Data</button>
+    </form>
+    <form class="menu-form" action="/file_explorer" method="get">
+      <button type="submit" class="menu-button" name="/file_explorer" onclick="toggleButtonColor(this)">File Explorar</button>
+    </form>
+
   </div>
 
   <div class="content">

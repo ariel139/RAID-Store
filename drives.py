@@ -97,7 +97,7 @@ class Drives(DataBaseSession):
 
 if __name__ == "__main__":
     # drive = Drives('0xccd9ac32d1f7',1,'test22',10000)
-    lst = Drives.get_max_left_drive_and_mac()
+    lst = Drives.get_drive_by_id(104)
     print('list: ',lst)
     # print(set(lst))
     # print(Drives.get_max_left_drive())

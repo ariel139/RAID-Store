@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="{{url_for('static',filename='styles/main.css')}}">
+  <title>Side Menu Example</title>
+</head>
+<body>
+
+  <div class="sidebar">
+    <form class="menu-form" action="settings" method="get">
+      <button type="submit" class="menu-button" name = "/settings" onclick="toggleButtonColor(this)">Welcome Ariel</button>
+    </form>
+    <form class="menu-form" action="/dash_board" method="get">
+      <button type="submit" class="menu-button" name="/dash_board"onclick="toggleButtonColor(this)">Dash Board & stats</button>
+    </form>
+    <form class="menu-form" action="/upload_file_page" method="get">
+      <button type="submit" class="menu-button" name="/upload_file_page" onclick="toggleButtonColor(this)">Upload Data</button>
+    </form>
+    <form class="menu-form" action="/file_explorer" method="get">
+      <button type="submit" class="menu-button" name="/file_explorer" onclick="toggleButtonColor(this)">File Explorar</button>
+    </form>
+
+  </div>
+
+  <div class="content">
+    <!-- Your main content goes here -->
+    <div class="rounded-container">
+        <!-- Your column content goes here -->
+        <h1>File Explorar</h1>
+        <!-- <button type="submit" class="signin-button">Sign In</button> -->
+        <table id="data-table" class="files-table">
+            <tr>
+                <th>Path</th>
+                <th>Size</th>
+                <th>Relation</th>
+            </tr>
+            {% for record in records %}
+            <tr id="{{ record[0] }}">
+                {% for ind in record[1:] %}
+                    <td>{{ ind  }}</td>
+                {% endfor %}
+            </tr>
+            {% endfor %}
+        </table>
+      </div>
+  
+  </div>
+
+</body>
+<script>
+    // JavaScript to handle click event using event delegation
+    document.getElementById("data-table").addEventListener("click", function(event) {
+        var target = event.target;
+        if (target.tagName === "TD") {
+            // If a TD is clicked, move up the DOM hierarchy to find the parent TR
+            var tr = target.parentElement;
+            alert("Table row clicked: " + tr.id);
+            var tds = tr.getElementsByTagName("td");
+            
+            // Loop through each TD element and log its inner text
+            var path = tds[0].innerText
+            const pattern = /[^\\]+(?=__)/; // Matches characters before '__'
+
+            // Create a RegExp object
+            const regex = new RegExp(pattern);
+            const match = regex.exec(path);
+            var file_name = match[0]
+            get_file(tr.id, file_name)
+            // You can add any other action you want here
+        }
+    });
+  function get_file(file_id,file_name){
+    var xhr = new XMLHttpRequest();
+            xhr.open("GET", "/download_fle?file_id="+file_id, true);
+            xhr.responseType = "blob"; // Receive response as a blob (binary data)
+            xhr.onload = function() {
+                if (xhr.status === 200) {
+                    // Create a blob URL for the response data
+                    var blob = new Blob([xhr.response], { type: "application/octet-stream" });
+                    var url = URL.createObjectURL(blob);
+                    // Create a link element to trigger the download
+                    var link = document.createElement("a");
+                    link.href = url;
+                    link.download = file_name // Specify the filename here
+                    document.body.appendChild(link);
+                    // Click the link to trigger the download
+                    link.click();   
+                    // Cleanup
+                    URL.revokeObjectURL(url);
+                    document.body.removeChild(link);
+                }
+            };
+            xhr.send();
+  }
+  // Function to create a SHA-256 hash from a string
+async function sha256(message) {
+    // Convert the message string to an ArrayBuffer
+    const buffer = new TextEncoder().encode(message);
+    
+    // Create a hash using the SHA-256 algorithm
+    const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+    
+    // Convert the hash ArrayBuffer to a hexadecimal string
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashHex = hashArray.map(byte => byte.toString(16).padStart(2, '0')).join('');
+    
+    return hashHex;
+}
+
+  function toggleButtonColor(button) {
+  // Remove 'clicked' class from all buttons
+  var buttons = document.querySelectorAll('.menu-button');
+  buttons.forEach(function(btn) {
+    btn.classList.remove('clicked');
+  });
+
+  // Add 'clicked' class to the clicked button
+  button.classList.add('clicked');
+}
+</script>
+</html>

@@ -12,7 +12,7 @@ class AESCipher(object):
     def encrypt(self, raw):
         raw = self._pad(raw)
         iv = Random.new().read(AES.block_size)
-        cipher = AES.new(self.key, AES.MODE_ECB)
+        cipher = AES.new(self.key, AES.MODE_CBC,iv)
         return base64.b64encode(iv + cipher.encrypt(raw))
 
     def decrypt(self, enc):
@@ -27,3 +27,10 @@ class AESCipher(object):
     @staticmethod
     def _unpad(s):
         return unpad(s,AES.block_size)
+
+if __name__ == "__main__":
+    aes_m = AESCipher('ariel')
+    raw = b'hello'
+    res = aes_m.encrypt(raw)
+    res = aes_m.decrypt(res)
+    print(res)

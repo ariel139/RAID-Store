@@ -8,16 +8,17 @@ class Data(DataBaseSession):
     INSERT_FILED_NOT_PATH = 'INSERT INTO data (hash,size,relation,location,parity) VALUES (%s,%s,%s,%s,%s);'
     INSERT_FILED = 'INSERT INTO Data VALUES %s,%s,%s,%s,%s,%s;'
     UPDATE_PATH_FILED = "UPDATE data SET `path`=%s WHERE `id`=%s"
+    GET_RECORDS = 'select id,path,size, relation from data'
     def __init__(self,id_num:int):
         super().__init__()
-        data_field = self.fetch((Data.GET_FIELD_QUERY,(id_num)))
+        data_field = self.fetch((Data.GET_FIELD_QUERY,(id_num,)))
         self.hash_value = data_field[0]
         self.id_num = id_num
         self.size = data_field[2]
         self.path = data_field[3]
         self.relation = data_field[4]
         self.location = data_field[5]
-        self.parity = data_field[6]
+        self.parity = False if data_field[6] ==0 else True
     
     
     @classmethod
@@ -39,15 +40,19 @@ class Data(DataBaseSession):
     def update_path_filed(id: int, path:str):
         db_session = DataBaseSession()
         db_session.insert(Data.UPDATE_PATH_FILED,(path,id))
-
     
+    @staticmethod
+    def get_data_records():
+        db_session = DataBaseSession()
+        res = db_session.fetch(Data.GET_RECORDS,all=True)
+        return res
     @staticmethod
     def _get_latest_record_id():
         # you may also use LAST_INSERT_ID()
         db_session = DataBaseSession()
         query = 'SELECT MAX(id) FROM Data'
         id_num = db_session.fetch(query)
-        return id_num
+        return id_num[0]
     
     def _get_file_data(self, file_path):
         file_path = Path(file_path)
@@ -56,4 +61,5 @@ class Data(DataBaseSession):
 
 if __name__ == "__main__":
     # Data.CreateFieldNoPath('ariel0', 1,'12121212',111)
-    Data.update_path_filed(6,'1212')
+    d_f = Data._get_latest_record_id()
+    print(d_f)

@@ -7,7 +7,7 @@ sys.path.append(lower_directory_path)
 from Query import Query
 from enums import Requests
 from Semaphore import Semaphore
-req_type = Requests.Add
+req_type = Requests.Add_File
 MEMORY_NAME = 'Ariel.tx'
 data = b'Hello\n'
 sem = Semaphore('sema',1,1)

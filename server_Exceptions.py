@@ -30,8 +30,17 @@ class SumOfDrivesIncompitable(Exception):
 class DeviceAlreadyExsits(Exception):
     pass
 
-class QueueObjectNotFound(Exception):
+class ObjectNotFoundInRecycleBean(Exception):
     pass # indicated that the q object did not get found in the garbage coollector
 
 class NotEnoghDrivesConnected(Exception):
+    pass
+
+class InvalidFileId(Exception):
+    pass
+
+class FileNodeNotCurrentlyConnected(Exception):
+    pass
+
+class UnableToUploadFile(Exception):
     pass

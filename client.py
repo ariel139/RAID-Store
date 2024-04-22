@@ -282,7 +282,7 @@ def save_file(data:bytes, file_name: str, file_hash: str, drive_name:str) -> Pat
     #TODO: set the deafult directory for file saving on each drive to be: 'raid_{drive name}'
     #TODO: check duplicateds files
     # the file name for each file in the directory will be: sha256(file_name+file_data)
-    saved_name = sha256(file_name.encode()+data).hexdigest()
+    saved_name = file_name + '__' +sha256(file_name.encode()+data).hexdigest()
     saved_path_directoris = Path(f'{drive_name.decode()}/raid_{drive_name.decode()[:-1]}')
     full_path = Path(f'{drive_name.decode()}/raid_{drive_name.decode()[:-1]}/{saved_name}')
     #TODO: change appropriate full path to linux NOT: sda/raid_sda...
@@ -291,7 +291,19 @@ def save_file(data:bytes, file_name: str, file_hash: str, drive_name:str) -> Pat
         file.write(data)
     add_meta_data(file_name,file_hash,full_path,drive_name.decode())
     return full_path
-  
+
+def get_metadata()->list:
+    with open(FILES_PATH) as file:
+        meta_data = load(file)
+    return meta_data
+
+def get_file_data_and_hash(path:str):
+    mt_data =get_metadata()
+    for file in mt_data:
+        if file["path"] == path:
+            with open(path, 'rb') as file_desc:
+                return file["file hash"],file_desc.read()
+    return '',b''
 def handle_server_message(message: Message, node: Node):
     match Category(message.category):
         case Category.Storage:
@@ -299,16 +311,23 @@ def handle_server_message(message: Message, node: Node):
                 path_saved = save_file(message.data[0],message.data[2].decode(),message.data[1].decode(),message.data[3])
                 print('save_file')
                 return Message(Category.Storage,2,(str(path_saved).encode(),message.data[-1]))
+            elif message.opcode == 4:
+                file_hash, file_data = get_file_data_and_hash(message.data[0].decode())
+                if file_data == b'':
+                    return Message(Category.Storage,5,(b'','did not get file',message.data[2],message.data[3]))
+                return Message(Category.Storage,5,(file_data,file_hash,message.data[2]))
+
+            
         case Category.Recovering:
             if message.opcode == 7:
                 try:
                     return send_drive(node, message.data[0], message.data[1])
                 except FileNotFoundError:
-                    return Message(Category.Errors,4,('Disk is Empty'))                
+                    return Message(Category.Errors,4,('Disk is Empty'))               
             elif message.opcode == 10:
                 print('got heere asdasdasdasdasdasd')
-                file_hash = sha256(message.data[1]).hexdigest()
-                save_file(message.data[1],file_hash,file_hash, message.data[0])
+                file_hash = sha256(message.data[2]).hexdigest()
+                save_file(message.data[2],message.data[1].decode(),file_hash, message.data[0])
         case _:
             raise InvalidCategory()
 def handle_mesage(id, message: Message, node: Node):

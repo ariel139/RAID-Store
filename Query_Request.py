@@ -8,7 +8,8 @@ DEFAULT_SIZE = 2**(4*8)-1
 class InvalidParameterError(Exception):
     pass
 class Query_Request:
-    def __init__(self, request_type: Requests, file_name:str,memory_view: SharedMemory = None, **kwargs) -> None:
+    USING_DATA_TUPLE = (Requests.Add_File, Requests.Response,Requests.Error)
+    def __init__(self, request_type: Requests, file_name:str= '',memory_view: SharedMemory = None, **kwargs) -> None:
         if 'data' in kwargs.keys():
             self.data = kwargs['data']
         else:
@@ -52,28 +53,7 @@ class Query_Request:
         int_size = Query_Request._get_size(size)
         data = memory.read(int_size)
         return size + data
-    # index = 0
-    # size= self.memory[index:index+2]
-    # while size == b'\x00\x00':
-    #     index+=2
-    #     read_index = index % len(self.memory)
-    #     size= self.memory[read_index:read_index+2]
-    #     if index == len(self.memory):
-    #         raise ValueError('There is no request in the buffer')
-    # int_size = Request._get_size(size)
-    # if int_size > self.memory.size:
-    #     raise ValueError(f'Size of request is to high. got {int_size} need below {self.memory.size}')
-    # read_index = index % len(self.memory)
-    # if int_size+read_index-2 < self.memory.size:
-    #     req_stream = self.memory[read_index+2: int_size+read_index+2]
-    #     self.memory[read_index+2: int_size+read_index+2]  = bytes(int_size)
-    #     return req_stream
-    # req_stram =self.memory[read_index+2:]
-    # got  =len(self.memory)-read_index-2
-    # self.memory[read_index:] = bytes(got)
-    # req_stram+= self.memory[:int_size-got]
-    # self.memory[:int_size-got] = bytes(len(self.memory)- (int_size-got))
-    #     return req_stram
+   
     @staticmethod
     def analyze_request(memory_view:SharedMemory):
         request = Query_Request._get_request_stream(memory_view)
@@ -91,7 +71,7 @@ class Query_Request:
             index = f_index+1
         method = Requests(int(fields[1].decode()))
         file_name = fields[2].decode()
-        if method == Requests.Add:
+        if method in Query_Request.USING_DATA_TUPLE:
             data = fields[3]
         else:
             data = b''

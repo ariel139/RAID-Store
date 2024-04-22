@@ -1,3 +1,5 @@
+from time import sleep
+import math
 import traceback
 import socket
 from typing import  Tuple
@@ -23,8 +25,11 @@ from struct import unpack
 
 CHUNK_SIZE = 1_000_000
 MAX_SUB_THREADS = 5
-SIGNAL_SEMAPHORE_NAME = 'sem_signal'
-SHARED_MEMORY_NAME ='shared_memory'
+
+SERVER_SHARED_MEMORY_NAME ='server_shared_memory'
+SERVER_SEMAPHORE_NAME = 'server_sem_signal'
+GUI_SHARED_MEMORY_NAME ='gui_shared_memory'
+GUI_SEMAPHORE_NAME = 'gui_sem_signal'
 
 # global vars
 running = True
@@ -84,7 +89,7 @@ def xor_drives(drives_buffers: dict):
         drives_buffers[i] = drives_buffers[i][slicer_index:]
     return xor_buffers(tuple(to_xor))
 
-def xor_data(q: Queue, res_drive: tuple, drives_amount)->bytes:
+def xor_data(q: Queue, res_drive: tuple, drives_amount, name)->bytes:
     drives_buffers = {}
     parity_node = find_node_by_mac(res_drive[0])
     dones = set()
@@ -102,7 +107,8 @@ def xor_data(q: Queue, res_drive: tuple, drives_amount)->bytes:
             xord_data_buffer = xor_drives(drives_buffers)
             if xord_data_buffer is not None:
                 #TODO: add parity record to Data table
-                msg = Message(Category.Recovering,10,(res_drive[3], xord_data_buffer))
+                name.to_bytes(math.ceil(math.log2(len(str(name)))),'little')
+                msg = Message(Category.Recovering,10,(res_drive[3],name, xord_data_buffer))
                 parity_node.send(msg)
         if len(dones) == len(drives_buffers.keys()) and len(dones)>0:
             real_done = True
@@ -132,7 +138,7 @@ def create_parity(drives:list):
         node_msg_q = messages_queues[str(hash(node))]
         msg = Message(Category.Recovering,7,(pickeld_q_id,drive[3])) # in client side get by name and mac from db
         node_msg_q.put((msg, 0))
-    xor_data(reciving_q, parity_drive, len(nodes_drives))
+    xor_data(reciving_q, parity_drive, len(nodes_drives), str(hash(str(nodes_drives))))
     # .# node_2.send(msg_req_2)
     
 
@@ -149,6 +155,14 @@ def add_storage(data):
             drives = give_drivers(drive_to_put,all_drives)
             create_parity(drives)
 
+def get_object_from_rb(obj_id:int):
+    t_obj = None
+    for obj in get_objects():
+        if id(obj) == obj_id:
+            t_obj = obj
+            break
+    if t_obj is None: ObjectNotFoundInRecycleBean()
+    return t_obj
 def handle_chuncked_data(msg: Message):
     q_id = loads(msg.data[0])
     mac = msg.data[1].decode()
@@ -158,7 +172,7 @@ def handle_chuncked_data(msg: Message):
         if id(obj) == q_id:
             q = obj
             break
-    if q is None: raise QueueObjectNotFound('Could not find q object')
+    if q is None: raise ObjectNotFoundInRecycleBean('Could not find q object')
     q.put((drive_name,mac, unpack('?',msg.data[3])[0], msg.data[4]))
     return None
 
@@ -214,6 +228,12 @@ def handle_request(message: Message, node_key:int):
             elif message.opcode == 2:
                 Data.update_path_filed(int(message.data[1].decode()),message.data[0].decode())
                 print('got file ACK ')
+            elif message.opcode == 5:
+                #TODO: check if file found error
+                buffer_id = loads(message.data[2])
+                file_obj = get_object_from_rb(buffer_id)
+                file_obj[0] =message.data[0]
+                file_obj[1] = message.data[1].decode()
             elif message.opcode == 7:
                 mac = sessions[str(node_key)]
                 try:
@@ -256,7 +276,7 @@ def send_messages(node: Node, q: Queue):
 
 def request_to_message(req:Query_Request, *args)-> Message:
     match (req.method):
-        case Requests.Add:
+        case Requests.Add_File:
             file_data = req.data
             file_name = req.file_name
             file_hash = sha256(file_data).hexdigest()
@@ -268,25 +288,35 @@ def request_to_message(req:Query_Request, *args)-> Message:
             return Message(Category.Storage,1,(file_data,file_hash,file_name, desierd_drive,args[1].encode()))
             # add file
             pass 
-        case Requests.Delete:
+        case Requests.Delete_File:
             # make sure to retrive file path and other importent parameters
             return Message(Category.Storage,3,)
             # delete file
-        case Requests.Retrive:
+        case Requests.Retrive_File:
             # retrive file for client
             pass
         case _:
             # error
             pass
 
-def get_gui_requests(sem:Semaphore,shr:SharedMemory):
+def get_gui_requests(gui_sem:Semaphore,server_sem:Semaphore,gui_shr:SharedMemory,server_shr: SharedMemory):
     global running
     while running:
         try:
-            sem.acquire()
-            req = Query_Request.analyze_request(shr)
-            # message = request_to_message(req)
-            reciver = handle_request_q(req)
+            gui_sem.acquire()
+            try:
+                req = Query_Request.analyze_request(gui_shr)
+                # message = request_to_message(req)
+                reciver = handle_request_q(req)
+            except Exception as err:
+                res_data = ('General error', err)
+                response = Query_Request(Requests.Error,data=dumps(res_data), memory_view=server_shr)
+            else:
+                res_data = ('Success',reciver)
+                response = Query_Request(Requests.Response,data=dumps(res_data), memory_view=server_shr)
+            finally:
+                response.build_req()
+                server_sem.release()
         except Exception as err:
             traceback.print_exc()
         # messages_q = messages_queues[hash(reciver)]
@@ -301,8 +331,33 @@ def get_right_drive(connected_macs:list, drives_macs: list):
             drives_mac = mac
             break
     return drive_id, drives_mac
+def get_file_info(file_id:int):
+    if isinstance(file_id,str):
+        if file_id.isnumeric():
+            file_id = int(file_id)
+    elif isinstance(file_id,int):
+        pass
+    else:
+        raise InvalidFileId() # invalid file_id exeption
+    data_filed = Data(file_id)
+    return data_filed
+    
+def get_file_from_node(node: Node, path:str)-> bytes:
+    drive = path[:path.find('\\')]
+    file_data = [b'1','1']
+    msg = Message(Category.Storage,4,(path,drive, dumps(id(file_data)), dumps(id(file_data))))
+    messages_q = messages_queues[str(hash(node))]
+    messages_q.put((msg, 0))
+    while len(file_data[0])==1 and len(file_data[1]) == 1:
+        continue
+    sleep(0.5) # in case it uplodes the buffer to soon before the hash 
+    if len(file_data[1]) ==1 and len(file_data[0])>1:
+        return False, file_data[1]
+        # in case there is somethig in the hash and not in the buffer it means an error eccourd
+    return True, file_data[0]
+
 def handle_request_q(req:Query_Request):
-    if req.method == Requests.Add:
+    if req.method == Requests.Add_File:
         session_locker.acquire()
         all_macs = [sessions[key] for key in sessions]
         session_locker.release()
@@ -318,7 +373,7 @@ def handle_request_q(req:Query_Request):
         aes_key = User.get_AES_key_by_id(user_id.decode())
         aes_obj = AESCipher(aes_key)
         req.data = aes_obj.encrypt(req.data[req.data.find(b'*')+1:])
-        d_id = str(Data.CreateFieldNoPath(user_id.decode(),drive_id,sha256(req.data).hexdigest(),len(req.data)).id_num[0])
+        d_id = str(Data.CreateFieldNoPath(user_id.decode(),drive_id,sha256(req.data).hexdigest(),len(req.data)).id_num)
         msg = request_to_message(req, drive[3], d_id)
         messages_q = messages_queues[str(hash(node))]
         messages_q.put((msg, 0)) # might need a lock
@@ -328,8 +383,26 @@ def handle_request_q(req:Query_Request):
             filterd_drives = list(filter(lambda drive: drive[0] in all_macs, all_drives))
             drives = give_drivers(Drives.get_drive_by_id(drive_id),filterd_drives)
             create_parity(drives)
-    else:
-        raise NotImplementedError("get node from params")
+            return 'file uploded with parity drive'
+        return 'file uploded with no parity drive'
+    elif req.method == Requests.Files_List:
+        records = Data.get_data_records()
+        records = list(filter(lambda record: not None in record,records))
+        return records
+    elif req.method == Requests.Retrive_File:
+        file_meta_data = get_file_info(req.file_name)
+        file_mac = Drives.get_drive_by_id(file_meta_data.location)[0]
+        file_node = find_node_by_mac(file_mac)
+        if file_node is None:
+            raise FileNodeNotCurrentlyConnected()
+        worked, file_data = get_file_from_node(file_node, file_meta_data.path)
+        if worked:
+            aes_key = User.get_AES_key_by_id(file_meta_data.relation)
+            aes_manage = AESCipher(aes_key)
+            decrypted = aes_manage.decrypt(file_data)
+            return decrypted
+        else:
+            raise UnableToUploadFile(file_data)
         
 def find_node_by_mac(mac:str) -> Node:
     nodes_locker.acquire()
@@ -374,14 +447,17 @@ def handle_client(client_soc: socket.socket):
 def main(creds: Tuple[str, int ]):
     try:
         global running
-        signal_sem = None
+        gui_sem = None
+        server_sem = None
         server_socket = socket.socket()
         server_socket.bind(creds)
         server_socket.listen(5)
         print('SERVER running...')
-        signal_sem = Semaphore(SIGNAL_SEMAPHORE_NAME, initial_value=0)
-        shr = SharedMemory(SHARED_MEMORY_NAME,DEFAULT_SIZE)
-        gui_thread = Thread(target=get_gui_requests,args=(signal_sem,shr))
+        gui_sem = Semaphore(GUI_SEMAPHORE_NAME, initial_value=0)
+        server_sem = Semaphore(SERVER_SEMAPHORE_NAME,initial_value=0)
+        gui_shr = SharedMemory(GUI_SHARED_MEMORY_NAME,DEFAULT_SIZE)
+        server_shr = SharedMemory(SERVER_SHARED_MEMORY_NAME,DEFAULT_SIZE)
+        gui_thread = Thread(target=get_gui_requests,args=(gui_sem,server_sem,gui_shr,server_shr))
         gui_thread.start()
         while running:
             soc, addr = server_socket.accept()
@@ -394,9 +470,9 @@ def main(creds: Tuple[str, int ]):
         print('got error: ',err)
         traceback.print_exc()
     finally:
-        if signal_sem is not None:
-            del signal_sem
-        shr.close()
+        if gui_sem is not None:
+            del gui_sem
+        gui_shr.close()
         server_socket.close()
         for th in threads:
             th.join()

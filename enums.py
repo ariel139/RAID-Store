@@ -57,9 +57,12 @@ client_blocking_messages={
 
 }
 class Requests(Enum):
-    Add=1
-    Retrive=2
-    Delete=3
+    Add_File=1
+    Retrive_File=2
+    Delete_File=3
+    Files_List=4
+    Response=5
+    Error=6
 
 
 client_out_puts = {
