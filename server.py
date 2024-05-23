@@ -25,7 +25,7 @@ from User import User
 from struct import unpack
 from info_retrive import *
 from pathlib import Path
-
+from logger import *
 CHUNK_SIZE = 1_000_000
 MAX_SUB_THREADS = 30
 
@@ -309,10 +309,10 @@ def handle_request(message: Message, node_key:int):
 
 def handle_requests(message: Message, q: Queue, key:int, id: str):
     try:
-
         res = handle_request(message, key)
     except Exception as error:
-        traceback.print_exc()
+        err = traceback.format_exc()
+        create_log(LOGS.ERROR, f'Error handling request: {err}')
         res = Message(Category.Errors,0)
     q.put((res,id))
 
@@ -323,8 +323,10 @@ def send_messages(node: Node, q: Queue):
             break
         message, id  = val
         if isinstance(message, Message):
+            create_log(LOGS.INFO,f'sent message {str(message)}')
             node.send(message,id)
         else:
+            create_log(LOGS.WARNING,f'did not sent message {str(message)}')
             print(f'did not send message {str(message)}')
 
 def request_to_message(req:Query_Request, *args)-> Message:
@@ -359,12 +361,14 @@ def get_gui_requests(gui_sem:Semaphore,server_sem:Semaphore,gui_shr:SharedMemory
             gui_sem.acquire()
             try:
                 req = Query_Request.analyze_request(gui_shr)
-                print(req.data)
+                create_log(LOGS.INFO,f'NEW GUI Request: {str(req.method)}')
                 # message = request_to_message(req)
                 reciver = handle_request_q(req)
             except Exception as err:
                 res_data = ('General error', err)
-                traceback.print_exc()
+                info = traceback.format_exc()
+                create_log(LOGS.ERROR,f'Error in responsing to GUI: {info}')
+                print(info)
                 response = Query_Request(Requests.Error,data=dumps(res_data), memory_view=server_shr)
             else:
                 res_data = ('Success',reciver)
@@ -372,9 +376,11 @@ def get_gui_requests(gui_sem:Semaphore,server_sem:Semaphore,gui_shr:SharedMemory
             finally:
                 response.build_req()
                 server_sem.release()
+                create_log(LOGS.DEBUG,f'REsponded to gui')
         except Exception as err:
-            traceback.print_exc()
-        # messages_q = messages_queues[hash(reciver)]
+                info = traceback.format_exc()
+                create_log(LOGS.ERROR,f'Error in gui request handeling: {info}')
+                print(info)        # messages_q = messages_queues[hash(reciver)]
         # messages_q.put((message, 0)) # might need a lock
 
 def get_used_drive(size:int):
@@ -567,6 +573,7 @@ def handle_request_q(req:Query_Request):
         try:
             used_drive = send_file_to_max_drive(pure_file_data,user_id,file_name)
         except NotenoughSpaceInTheDrive:
+            create_log(LOGS.WARNING,'file did not get uploaded, there is not enough space in the drive')
             return 'file did not uploaded, there is not enough space in the drive'
         all_macs = get_all_macs_currently_connected()
         # check recover
@@ -591,12 +598,17 @@ def handle_request_q(req:Query_Request):
                     raise NotenoughSpaceInTheDrive()
                 create_parity(used_drive,second_drive,parity_drive)
             except NotEnoghDrivesConnected:
+                create_log(LOGS.WARNING,'file uploded with no parity drive Not enough drives are connected')
                 return 'file uploded with no parity drive\nNot enough drives are connected'
             except DrivesDontHaveData:
+                create_log(LOGS.WARNING,'file uploded with no parity drive Drive dont have data')
                 return 'file uploded with no parity drive\nDrive dont have data'
             except NotenoughSpaceInTheDrive:
+                create_log(LOGS.WARNING,'file uploded with no parity drive Pareity Drive dont have enough space left')
                 return 'file uploded with no parity drive\nPareity Drive dont have enough space left'
+            create_log(LOGS.INFO,'file uploded with parity drive')
             return 'file uploded with parity drive'
+        create_log(LOGS.INFO,'file uploded with no parity drive')
         return 'file uploded with no parity drive'
     
     elif req.method == Requests.Files_List:
@@ -611,7 +623,7 @@ def handle_request_q(req:Query_Request):
         if file_node is None:
             result_drive = find_recover_drive(file_meta_data.location)
             data = recover_drive(file_meta_data.location,result_drive)
-            
+            create_log(LOGS.INFO,'REcoverd drive')
             if data is not None:
                 drive_tree = build_file_tree(file_meta_data.location)
                 s,t = extract_file_indicies_by_tree(file_meta_data.path, drive_tree)
@@ -659,6 +671,7 @@ def handle_client(client_soc: socket.socket):
         while running:
             while len(handle_requests_threads) <= MAX_SUB_THREADS:
                 message,id  = end_point.recive()
+                create_log(LOGS.INFO,f'Recived new message {str(message)}')
                 th = Thread(target=handle_requests, args = (message,send_message_queue,hash(end_point), id))
                 th.start()
                 handle_requests_threads.append(th)
@@ -690,6 +703,7 @@ def main(creds: Tuple[str, int ]):
         server_socket.bind(creds)
         server_socket.listen(5)
         print('SERVER running...')
+        create_log(LOGS.INFO,'SERVER STARTED')
         gui_sem = Semaphore(GUI_SEMAPHORE_NAME, initial_value=0)
         server_sem = Semaphore(SERVER_SEMAPHORE_NAME,initial_value=0)
         gui_shr = SharedMemory(GUI_SHARED_MEMORY_NAME,DEFAULT_SIZE)
@@ -698,13 +712,16 @@ def main(creds: Tuple[str, int ]):
         gui_thread.start()
         while running:
             soc, addr = server_socket.accept()
+            create_log(LOGS.INFO,f"new client connection from: {addr[0]}:{str(addr[1])}")
             print('new connection from: '+addr[0]+':'+str(addr[1]))
             th = Thread(target=handle_client, args= (soc,))
             th.start()
             threads.append(th)
     except Exception as err:
         print('got error: ',err)
-        traceback.print_exc()
+        error_info = traceback.format_exc()
+        create_log(LOGS.ERROR,error_info)
+        print(error_info)
     finally:
         if gui_sem is not None:
             del gui_sem
@@ -714,6 +731,7 @@ def main(creds: Tuple[str, int ]):
             server_socket.close()
         for th in threads:
             th.join()
+        
 
             
 
