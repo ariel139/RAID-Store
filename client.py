@@ -30,7 +30,7 @@ lock_path = FileLock("file_path.lock")
 
 # constants
 FILES_LOCK=1
-DEBUG = True
+DEBUG = False
 FILES_PATH = ''
 SERVER_IP = '10.100.102.204' #TODO: set default server ip
 SERVER_PORT = 8200 # TODO: Set deafult server port
