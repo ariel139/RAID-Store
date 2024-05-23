@@ -63,6 +63,7 @@ class Requests(Enum):
     Files_List=4
     Response=5
     Error=6
+    Info=7
 
 
 client_out_puts = {

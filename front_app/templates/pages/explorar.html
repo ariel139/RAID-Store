@@ -8,9 +8,13 @@
 </head>
 <body>
 
-  <div class="sidebar">
-    <form class="menu-form" action="settings" method="get">
-      <button type="submit" class="menu-button" name = "/settings" onclick="toggleButtonColor(this)">Welcome Ariel</button>
+   <div class="sidebar">
+    <h1>Hello {{user.full_name}}!</h1>
+    <form class="menu-form" action="settings" class="form-container" method="get">
+      <div class="flex-container">
+        <img src="https://robohash.org/{{ user.user_name }}.png?size=70x70&set=set5&bgset=bg2 ">
+      <button type="submit" class="menu-button" name = "/settings" onclick="toggleButtonColor(this)">Settings</button>
+      </div>
     </form>
     <form class="menu-form" action="/dash_board" method="get">
       <button type="submit" class="menu-button" name="/dash_board"onclick="toggleButtonColor(this)">Dash Board & stats</button>
@@ -32,7 +36,8 @@
         <!-- <button type="submit" class="signin-button">Sign In</button> -->
         <table id="data-table" class="files-table">
             <tr>
-                <th>Path</th>
+                <th>Path Saves In Node</th>
+                <th>File Name</th>
                 <th>Size</th>
                 <th>Relation</th>
             </tr>
@@ -41,7 +46,7 @@
                 {% for ind in record[1:] %}
                     <td>{{ ind  }}</td>
                 {% endfor %}
-            </tr>
+              </tr>
             {% endfor %}
         </table>
       </div>
@@ -56,7 +61,6 @@
         if (target.tagName === "TD") {
             // If a TD is clicked, move up the DOM hierarchy to find the parent TR
             var tr = target.parentElement;
-            alert("Table row clicked: " + tr.id);
             var tds = tr.getElementsByTagName("td");
             
             // Loop through each TD element and log its inner text
@@ -74,11 +78,14 @@
   function get_file(file_id,file_name){
     var xhr = new XMLHttpRequest();
             xhr.open("GET", "/download_fle?file_id="+file_id, true);
-            xhr.responseType = "blob"; // Receive response as a blob (binary data)
+            xhr.responseType = 'blob'; // Set the response type to blob
             xhr.onload = function() {
+              console.log(xhr.status)
                 if (xhr.status === 200) {
+                  console.log("here")
                     // Create a blob URL for the response data
-                    var blob = new Blob([xhr.response], { type: "application/octet-stream" });
+                    var blob = xhr.response
+                   
                     var url = URL.createObjectURL(blob);
                     // Create a link element to trigger the download
                     var link = document.createElement("a");
@@ -90,6 +97,11 @@
                     // Cleanup
                     URL.revokeObjectURL(url);
                     document.body.removeChild(link);
+                }
+                else if (xhr.status === 505){
+                  console.log(xhr.response)
+                  error = JSON.parse(xhr.response)
+                  alert(error.Message)
                 }
             };
             xhr.send();

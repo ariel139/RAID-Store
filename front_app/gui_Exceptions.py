@@ -8,3 +8,5 @@ class NoDataInRequest(Exception):
 
 class UserMustBeConnected(Exception):
     pass
+class ErrorInRecivingFile(Exception):
+    pass

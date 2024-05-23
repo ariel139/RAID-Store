@@ -3,6 +3,8 @@ from graph import Graph
 import ctypes
 from functools import reduce
 from itertools import combinations
+from Data import Data
+from parties import Parties
 def _write_drives(drive_size,generator, name='drive2'):
     chunk = 10000 # bytes
     with open(name,'ab') as file:
@@ -81,12 +83,15 @@ def get_allocated_drives(sessions: dict)-> tuple:
     
 def check_used(drive_mac: str):
     pass
-def give_drivers(driver, drives:list):
+def give_drivers(used_drive, drives:list):
     for dr in drives:
-        if dr[0] == driver[0]:
+        if dr[0] == used_drive[0]:
             drives.remove(dr)
+    for drive in drives:
+        if Parties.is_connected_to_parity(drive[1]):
+            drives.remove(drive)
     #BUG: the left space filed in the drive is related as the occuipied space
-    # drives.sort(key=lambda test_driver: test_driver[4])
+    drives.sort(key=lambda temp_drive: Data.get_drive_used_size(temp_drive[1]))
     #TODO: upgrade so the drives that are returend would be similer in occupied space
     return drives
     # min_driver1 = min(drivers, key=lambda test_driver: test_driver[4])
@@ -106,6 +111,17 @@ def xor_buffers(res_tup:tuple):
     return bytes(result)
 
 
+def xor_drives(drives_buffers: dict):
+    for _,buffer in drives_buffers.items():
+        if len(buffer) <=0:
+            return
+    slicer_index = min([len(value) for key, value in drives_buffers.items()])
+    to_xor = [buf[:slicer_index] for key, buf in drives_buffers.items()]
+    for i in drives_buffers.keys():
+        drives_buffers[i] = drives_buffers[i][slicer_index:]
+    return xor_buffers(tuple(to_xor))
+
+
 def convert_buffer(buffer:bytes):
     return (ctypes.c_ubyte * len(buffer)).from_buffer_copy(buffer)
 
@@ -121,16 +137,12 @@ def convert_bytes(bytes_tuple: tuple):
         conv_tup.append(convert_buffer(buf))
     return convert_buffers(tuple(conv_tup))
 
-if __name__ == "__main__":
-    sessions= { 
-        '1':'0xccd9ac32d1f5',
-        '2':'0xccd9ac32d1f6',
-        '3':'0xccd9ac32d1f7',
-        '4':'0xccd9ac32d1f5',
-        '5':'0xccd9ac32d1f6',
-        '6':'0xccd9ac32d1f7',
-        '7':'0xccd9ac32d1f7',
-        '8':'0xccd9ac32d1f7',
-        '9':'0x10101010000',
-    }
 
+
+if __name__ == "__main__":
+    data = {
+        '1':b'wpipipV9bHZYg445AXdQrn6tZ/us82Q7851FPxkzJ+A=',
+        '2': b'1bPgqHd/sQVdwIBVhlNRMOspu889SqDtRqF+AJsycuU=',
+    }
+    print(xor_drives(data))
+    # print(xor_buffers(data))

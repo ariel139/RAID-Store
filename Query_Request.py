@@ -8,7 +8,7 @@ DEFAULT_SIZE = 2**(4*8)-1
 class InvalidParameterError(Exception):
     pass
 class Query_Request:
-    USING_DATA_TUPLE = (Requests.Add_File, Requests.Response,Requests.Error)
+    USING_DATA_TUPLE = (Requests.Add_File, Requests.Response,Requests.Error, Requests.Info)
     def __init__(self, request_type: Requests, file_name:str= '',memory_view: SharedMemory = None, **kwargs) -> None:
         if 'data' in kwargs.keys():
             self.data = kwargs['data']
@@ -69,7 +69,10 @@ class Query_Request:
                 break
             fields.append(request[index:f_index])
             index = f_index+1
-        method = Requests(int(fields[1].decode()))
+        try:
+            method = Requests(int(fields[1].decode()))
+        except ValueError:
+            print(fields)
         file_name = fields[2].decode()
         if method in Query_Request.USING_DATA_TUPLE:
             data = fields[3]

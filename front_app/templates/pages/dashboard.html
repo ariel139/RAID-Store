@@ -30,23 +30,41 @@
 
   <div class="content">
     <!-- Your main content goes here -->
-    <div class="rounded-container">
+    <div class="charts-container">
         <!-- Your column content goes here -->
-        <h1>Upload your data</h1>
+        <h1>DashBoard</h1>
         <!-- <button type="submit" class="signin-button">Sign In</button> -->
-        <form action="{{  url_for('process_file')  }}" method="post" enctype="multipart/form-data">
-          <label for="file">Choose a file:</label>
-          <input class="file-input" type="file" id="file" name="file"> <!-- Specify allowed file types if needed -->
-          <br>
-          <input class="file-submit" type="submit" value="Upload File">
-      </form>
-      </div>
+        <div class="charts-container">
+            <div class="pie-charts">
+              <h2>current Nodes</h2>
+              <div class="pie-chart" id="pieChart1Container">
+                <canvas id="pieChart1"></canvas>
+                <h3>Pie Chart 1</h3>
+              </div>
+              <div class="pie-chart" id="pieChart2Container">
+                <h2>Data info</h2>
+                <canvas id="pieChart2" ></canvas>
+                <h3>Pie Chart 2</h3>
+              </div>
+            </div>
+            <div class="histogram" id="histogramContainer">
+              <h2>Used Data across the devices</h2>
+              <canvas id="histogram" ></canvas>
+            </div>
+          </div> 
+    </div>
   
   </div>
 
 </body>
 <script>
-   function toggleButtonColor(button) {
+    var data = {{ data | tojson | safe}}
+    data = JSON.parse(data)
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+<script type="text/javascript" src="{{ url_for('static', filename='chart-data.js') }}"></script>
+<script>
+    function toggleButtonColor(button) {
   // Remove 'clicked' class from all buttons
   var buttons = document.querySelectorAll('.menu-button');
   buttons.forEach(function(btn) {

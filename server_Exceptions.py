@@ -44,3 +44,15 @@ class FileNodeNotCurrentlyConnected(Exception):
 
 class UnableToUploadFile(Exception):
     pass
+
+class DriveNodeIsNotAvalableToRecover(Exception):
+    pass
+
+class NotConnectedToPartiyDrive(Exception):
+    pass
+
+class DrivesDontHaveData(Exception):
+    pass
+
+class NotenoughSpaceInTheDrive(Exception):
+    pass

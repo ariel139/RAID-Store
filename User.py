@@ -10,6 +10,7 @@ from DataBaseSession import DataBaseSession
 
 class User(DataBaseSession):
     get_AES_KEY_WITH_ID = "select AES_Key from data_users where user_id=%s;"
+    CHECK_IF_USERS_EXSISTS = 'select exists(select * from data_users)'  
     def __init__(self,user_id: str,password:str, full_name: str ='', sign_in:bool = False):
         super().__init__()
         #TODO: type checks
@@ -32,7 +33,6 @@ class User(DataBaseSession):
                 salt = user[4]
             else: 
                 raise WrongPassword('WRONG PASSWORD!')
-
         try:
             self.full_name = full_name
             self.user_name = user_id
@@ -72,4 +72,9 @@ class User(DataBaseSession):
         key = db.fetch((User.get_AES_KEY_WITH_ID,(id,)))[0]
         del db
         return key
-  
+    
+    @staticmethod
+    def check_if_users_exsists():
+        db = DataBaseSession()
+        res = db.fetch(User.CHECK_IF_USERS_EXSISTS)[0]
+        return True if res==1 else False

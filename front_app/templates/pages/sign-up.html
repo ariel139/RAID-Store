@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles/main.css') }}">
+  <title>Sign In Page</title>
+</head>
+<body>
+
+  <div class="signin-container">
+    <img src="https://api.dicebear.com/7.x/big-ears-neutral/svg?backgroundType=gradientLinear" alt="User Image" class="user-image">
+    <h1>Sign Up</h1>
+    <form method="post", action="{{ url_for('sign_up')}}">
+    <label for="Name">Full Name:</label>
+    <input type="text" id="name" name="name" placeholder="Enter your Full Name">
+      <label for="user_id">User Name:</label>
+      <input type="text" id="user_id" name="user_id" placeholder="Enter your User Name">
+      <label for="password-1">Password:</label>
+      <input type="password" id="password-1" name="password-1" placeholder="Enter your password">
+      <label for="password-2">Re-type Password:</label>
+      <input type="password" id="password-2" name="password-2" placeholder="Enter your password Again">
+
+      <button type="submit" class="signin-button">Sign Up</button>
+    </form>
+    <form class="menu-form" action="/" method="get">
+      <button type="submit" class="switch-user-button" name="/signin">Switch User</button>
+    </form>
+    <!-- <button class="switch-user-button">Switch User</button> -->
+  </div>
+
+</body>
+</html>
