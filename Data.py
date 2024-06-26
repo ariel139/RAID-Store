@@ -32,10 +32,12 @@ MAC = hex(getnode()).encode()
 class Data(DataBaseSession):
     GET_FIELD_QUERY = 'select * from data where id=%s;'
     INSERT_FILED_NOT_PATH = 'INSERT INTO data (hash, size, relation, location, parity) VALUES (%s, %s, %s, %s, %s);'
+    INSERT_FILED_NOT_PATH_SIZE = 'INSERT INTO data (hash, relation, location, parity) VALUES (%s, %s, %s, %s);'
     INSERT_FILED = 'INSERT INTO Data (hash, size, relation, path, location, parity) VALUES (%s, %s, %s, %s, %s, %s);'
     UPDATE_PATH_FILED = "UPDATE data SET `path`=%s WHERE `id`=%s"
+    UPDATE_PATH_SIZE_FILED = "UPDATE data SET `path`=%s , size=%s WHERE `id`=%s"
     GET_RECORDS = 'select id, path, size, relation from data;'
-    UPDATE_SIZE_BY_HASH_PATH_RELATION = 'UPDATE data SET size = size + %s WHERE location = %s and path = %s and relation = %s'
+    UPDATE_SIZE_BY_HASH_PATH_RELATION = 'UPDATE data SET size = %s WHERE location = %s and path = %s and relation = %s'
     GET_DRIVE_USED_SIZE = 'SELECT SUM(size) FROM data WHERE location = %s'
     DRIVES_IDS = 'select location from data'
     DATA_CROSSING= """
@@ -50,6 +52,11 @@ class Data(DataBaseSession):
     RECOVERD_DATA_COUNT = """SELECT SUM(size) from data where location IN (select real_drive_id from parties)"""
     CHECK_IF_DRIVE_USED_FOR_DATA= 'SELECT EXISTS( select * from data where location =%s and parity=0) '
     GET_FILE_RECORDS_FOR_DRIVE = 'SELECT * FROM raid.data where location=%s ORDER BY id;'
+    GET_FILE_NAMES_ON_DRIVES = 'SELECT path from raid.data where location=%s'
+    DELETE_RECORD = """DELETE FROM `raid`.`data`
+                        WHERE id=%s;
+                        """
+    PARITY_FILED = """SELECT * from data where location=%s"""
     def __init__(self, id_num: int):
         """
         Constructor method to initialize a Data object.
@@ -120,6 +127,24 @@ class Data(DataBaseSession):
         return Data(rec_id)
 
     @staticmethod
+    def CreateFieldNoPathSize(user_id: str, drive: int, file_hash: bytes, parity: bool = False):
+        db_session = DataBaseSession()
+        parity = 0 if not parity else 1
+        db_session.insert(Data.INSERT_FILED_NOT_PATH_SIZE, (file_hash, user_id, drive, parity))
+        rec_id = Data._get_latest_record_id()
+        return Data(rec_id)
+
+    @staticmethod
+    def get_parity_data_filed(parity_location):
+        db_session = DataBaseSession()
+        res = db_session.fetch((Data.PARITY_FILED,(parity_location,)))
+        del db_session
+        if res is None:
+            raise Exception('parity filed does not exist')
+        return Data(res[1])
+
+
+    @staticmethod
     def update_path_filed(id: int, path: str):
         """
         Static method to update the path of a data field.
@@ -130,6 +155,18 @@ class Data(DataBaseSession):
         """
         db_session = DataBaseSession()
         db_session.insert(Data.UPDATE_PATH_FILED, (path, id))
+    
+    @staticmethod
+    def update_path_filed_size(id: int, path: str,size:int):
+        """
+        Static method to update the path of a data field.
+
+        Args:
+            id (int): The ID of the data field.
+            path (str): The new path of the data.
+        """
+        db_session = DataBaseSession()
+        db_session.insert(Data.UPDATE_PATH_SIZE_FILED, (path,size, id))
 
     @staticmethod
     def get_data_records():
@@ -237,9 +274,19 @@ class Data(DataBaseSession):
         db_session = DataBaseSession()
         res = db_session.fetch((Data.GET_FILE_RECORDS_FOR_DRIVE,(drive_id,)),all=True)
         return res
+
+    @staticmethod
+    def get_file_paths_on_drive(drive_id):
+        db_session = DataBaseSession()
+        res = db_session.fetch((Data.GET_FILE_NAMES_ON_DRIVES,(drive_id,)),all=True)
+        return res
     
+    def delete_records(self,):
+        self.insert(Data.DELETE_RECORD,(self.id_num,))
+
+        
 if __name__ == "__main__":
-    print(Data.get_file_records(119))
+    print(Data.get_parity_data_filed(119))
 
 
 

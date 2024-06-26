@@ -59,6 +59,13 @@ def sign_up():
                 traceback.print_exc()
                 return render_template('pages/popup.html',message_head='Error', message=err)
     
+@app.route('/error', methods=['GET'])
+def error():
+    global user
+    if request.method == 'post'.upper():
+        ttl = request.form['error title']
+        content = request.form['error content']
+        return render_template('pages/popup.html',message_head=ttl, message=content)
 
 @app.route('/signin', methods = ['POST'])
 def sign_in():
@@ -205,7 +212,7 @@ def change_password():
                 return render_template('pages/popup.html', message_head='Error', message='Current password dont match')
             user.change_password(new_pass_1)
             return render_template('pages/popup.html', message_head='Success', message='Password changed')
-
+        
 
 @app.route('/signout')
 def sign_out():
@@ -215,7 +222,26 @@ def sign_out():
         return redirect('/')
     else:
         return render_template('pages/popup.html', message_head='Error', message='User Not even signed')
-        
+
+@app.route('/delete_file', methods = ['GET'])
+def delete_file():
+    global user
+    if user is  None:
+        return redirect('/')
+    else:
+        print('got here')
+        file_id = request.args.get('file_id')
+        # return 'file id = ' + str(file_id)
+        req = query.Query_Request(Requests.Delete_File,str(file_id), memory_view=gui_shr)
+        req_msg = req.build_req()
+        gui_sem.release()
+        server_sem.acquire()
+        response = query.Query_Request.analyze_request(server_shr)
+        response_data = pickle.loads(response.data)
+        if {response_data[0]}=='good':
+            return 'delted file succefuly'
+        else:
+            return f'status: {response_data[0]}\ndescription: {response_data[1]}'
 
 if __name__ == "__main__":
    

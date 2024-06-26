@@ -4,7 +4,7 @@ from struct import pack, unpack
 from SharedMemory import SharedMemory
 from Semaphore import Semaphore
 SPLITER = b'*'
-DEFAULT_SIZE = 2**(4*8)-1
+DEFAULT_SIZE = 2**(4*7)-1 # based on page size 
 class InvalidParameterError(Exception):
     pass
 class Query_Request:
@@ -80,3 +80,6 @@ class Query_Request:
             data = b''
         return Query_Request(method,file_name,data=data)
     
+if __name__ == "__main__":
+    print('as')
+    memory =  SharedMemory('ariel',DEFAULT_SIZE)

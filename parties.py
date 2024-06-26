@@ -54,6 +54,9 @@ class Parties(DataBaseSession):
                             EXISTS(
                             select * from parties where parity_drive_id=%s)
                             """
+    DELETE_RECORD = """
+                        DELETE FROM parties WHERE parity_drive_id=%s
+                    """
     @staticmethod
     def create_field(real_drive_id, data_parity_drive_record_id):
         """
@@ -136,6 +139,13 @@ class Parties(DataBaseSession):
         db = DataBaseSession()
         ans = db.fetch((Parties.CHECK_IF_PARITY_DRIVE,(drive_id,)))[0]
         return False if ans==0 else True
+
+    @staticmethod
+    def delete_parity_record(parity_id:int):
+        db = DataBaseSession()
+        db.insert(Parties.DELETE_RECORD,(parity_id,))
+        
+        
     
     
 

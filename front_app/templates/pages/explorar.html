@@ -46,6 +46,7 @@
                 {% for ind in record[1:] %}
                     <td>{{ ind  }}</td>
                 {% endfor %}
+                <td><button id="{{ record[0] }}">delete</button></td>
               </tr>
             {% endfor %}
         </table>
@@ -74,7 +75,17 @@
             get_file(tr.id, file_name)
             // You can add any other action you want here
         }
-    });
+        else if  (target.tagName === "BUTTON"){
+          let file_id = target.id
+          var xhr = new XMLHttpRequest();
+          xhr.open("GET", "/delete_file?file_id="+file_id, true); 
+          xhr.onload = function(){
+            console.log(xhr)
+            alert(xhr.responseText)
+          }
+          xhr.send()
+        }
+      });
   function get_file(file_id,file_name){
     var xhr = new XMLHttpRequest();
             xhr.open("GET", "/download_fle?file_id="+file_id, true);
@@ -99,9 +110,8 @@
                     document.body.removeChild(link);
                 }
                 else if (xhr.status === 505){
-                  console.log(xhr.response)
-                  error = JSON.parse(xhr.response)
-                  alert(error.Message)
+                  alert('error in server side, could not retrive file')
+                  console.log(xhr)
                 }
             };
             xhr.send();

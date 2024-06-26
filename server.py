@@ -7,7 +7,7 @@ from typing import  Tuple
 from threading import Thread, Lock
 from Message import Message
 from node import Node
-from enums import Countries,Category, Requests
+from enums import CommunicatorType,Category, Requests
 from Computers import Computers
 from queue import Queue
 from Semaphore import Semaphore
@@ -25,6 +25,8 @@ from User import User
 from struct import unpack
 from info_retrive import *
 from pathlib import Path
+from logger import *
+from hamming import unsplit_data, decode_hamming, bitarray, hammingError
 
 CHUNK_SIZE = 1_000_000
 MAX_SUB_THREADS = 30
@@ -88,11 +90,12 @@ def xor_drives(drives_buffers: dict):
             return
     slicer_index = min([len(value) for key, value in drives_buffers.items()])
     to_xor = [buf[:slicer_index] for key, buf in drives_buffers.items()]
+
     for i in drives_buffers.keys():
         drives_buffers[i] = drives_buffers[i][slicer_index:]
     return xor_buffers(tuple(to_xor))
 
-def xor_data(q: Queue, res_drive: tuple, drives_amount, name)->bytes:
+def xor_data(q: Queue, res_drive: tuple, drives_amount, name, new:bool=False)->bytes:
     drives_buffers = {}
     dones = set()
     if res_drive is not None:
@@ -101,7 +104,10 @@ def xor_data(q: Queue, res_drive: tuple, drives_amount, name)->bytes:
         res_drive_buffer = b''
     while True:
         if not q.empty():
-            mac, drive_info, done, data = q.get()
+            try:
+                mac, drive_info, done, data = q.get() 
+            except ValueError:
+                raise ErrorInClient()
             drive_idef = sha256(mac.encode()+drive_info.encode()).hexdigest()
             if done:
                 dones.add(drive_idef)
@@ -110,15 +116,18 @@ def xor_data(q: Queue, res_drive: tuple, drives_amount, name)->bytes:
             else: 
                 drives_buffers[drive_idef] = data
         if len(drives_buffers) >= drives_amount:
+            pass
             xord_data_buffer = xor_drives(drives_buffers)
             if xord_data_buffer is not None:
-                #TODO: add parity record to Data table
-                # name.to_bytes(math.ceil(math.log2(len(str(name)))),'little')
                 if res_drive is None:
                     res_drive_buffer+=xord_data_buffer
                 else:
-                    msg = Message(Category.Recovering,10,(res_drive[3],name, xord_data_buffer))
+                    msg = Message(Category.Recovering,10,(res_drive[3],name, xord_data_buffer, pack('?', new)))
+                    new=False
                     parity_node.send(msg)
+                    node_msg_q = messages_queues[str(hash(parity_node))] 
+                    node_msg_q.put((msg,0))
+                    sleep(2)
         if len(dones) == len(drives_buffers.keys()) and len(dones)>0:
             cnt = 0
             for key, data in drives_buffers.items():
@@ -149,6 +158,11 @@ def send_parity_request_to_drive(drive:tuple, pickeld_q_id):
     msg = Message(Category.Recovering,7,(pickeld_q_id,drive[3],zero_index)) # in client side get by name and mac from db
     node_msg_q.put((msg, 0))
 
+def generate_parity_file_name(drive_id_1:int, drive_id_2):
+    name_1 = '&'.join([Path(t[0]).name for t in Data.get_file_paths_on_drive(drive_id_1)]).encode()
+    name_2 = '&'.join([Path(t[0]).name for t in Data.get_file_paths_on_drive(drive_id_2)]).encode()
+    return sha256(name_1+ name_2).hexdigest()
+
 def create_parity(used_drive, second_drive, parity_drive):
     # d_1 + d_2 are getting xor'd
     #d_3 get the result
@@ -164,7 +178,7 @@ def create_parity(used_drive, second_drive, parity_drive):
     #     msg = Message(Category.Recovering,7,(pickeld_q_id,drive[3],zero_index)) # in client side get by name and mac from db
     #     node_msg_q.put((msg, 0))
     parity_file_name = sha256(str(parity_drive[:3]).encode()).hexdigest()
-    xor_data(reciving_q, parity_drive, 2, parity_file_name)
+    xor_data(reciving_q, parity_drive, 2, parity_file_name,True)
     if not Parties.is_connected_to_parity(used_drive[1]):
         Parties.connect_drives_to_parity([used_drive[1],second_drive[1]],parity_drive[1])
     print('finished all')
@@ -194,8 +208,17 @@ def get_object_from_rb(obj_id:int):
     return t_obj
 
 def handle_chuncked_data(msg: Message):
-    if len(msg.data) == 1:
-        raise Exception(f"error in client while sending drive: CLOSE RECIVING Q THREAD!!!: {msg.data[0].decode()}")
+    if len(msg.data) == 2:
+        print(Exception(f"error in client while sending drive: CLOSE RECIVING Q THREAD!!!: \n{msg.data[0].decode()}"))
+        try:
+            q_id = loads(msg.data[0])
+            for obj in get_objects():
+                if id(obj) == q_id:
+                    q = obj
+                    break
+            q.put('error')
+        except Exception as err:
+            raise Exception(err)
     q_id = loads(msg.data[0])
     mac = msg.data[1].decode()
     drive_name  = msg.data[2].decode()
@@ -263,8 +286,16 @@ def handle_request(message: Message, node_key:int):
                 except SizeToLow:
                     return Message(Category.Errors,5,'The Size of the messgae is To Low')
                 return Message(Category.Storage,6)
+            if message.opcode == 10:
+                res_obj_id = loads(message.data[0])
+                res_obj = get_object_from_rb(res_obj_id)
+                res_obj+=[message.data[1].decode() , message.data[2].decode()]
+                del res_obj[0]
+                
+
             elif message.opcode == 2:
-                Data.update_path_filed(int(message.data[1].decode()),message.data[0].decode())
+                Data.update_path_filed_size(int(message.data[1].decode()),message.data[0].decode(), int(message.data[2].decode()))
+                # Data.update_path_filed(int(message.data[1].decode()),message.data[0].decode())
                 print('got file ACK ')
             elif message.opcode == 5:
                 #TODO: check if file found error
@@ -285,6 +316,8 @@ def handle_request(message: Message, node_key:int):
             if message.opcode == 8:
                 return handle_chuncked_data(message)
             elif message.opcode == 11:
+                if isinstance(message.data[0],str):
+                    raise ErrorInClient()
                 existed = unpack('?', message.data[3])[0]
                 drive_name = message.data[4].decode()
                 size = int(message.data[2].decode())
@@ -309,10 +342,10 @@ def handle_request(message: Message, node_key:int):
 
 def handle_requests(message: Message, q: Queue, key:int, id: str):
     try:
-
         res = handle_request(message, key)
     except Exception as error:
-        traceback.print_exc()
+        err = traceback.format_exc()
+        create_log(LOGS.ERROR, f'Error handling request: {err}')
         res = Message(Category.Errors,0)
     q.put((res,id))
 
@@ -323,8 +356,10 @@ def send_messages(node: Node, q: Queue):
             break
         message, id  = val
         if isinstance(message, Message):
+            create_log(LOGS.INFO,f'sent message {str(message)}')
             node.send(message,id)
         else:
+            create_log(LOGS.WARNING,f'did not sent message {str(message)}')
             print(f'did not send message {str(message)}')
 
 def request_to_message(req:Query_Request, *args)-> Message:
@@ -359,12 +394,15 @@ def get_gui_requests(gui_sem:Semaphore,server_sem:Semaphore,gui_shr:SharedMemory
             gui_sem.acquire()
             try:
                 req = Query_Request.analyze_request(gui_shr)
-                print(req.data)
+                create_log(LOGS.INFO,f'NEW GUI Request: {str(req.method)}')
                 # message = request_to_message(req)
                 reciver = handle_request_q(req)
             except Exception as err:
-                res_data = ('General error', err)
-                traceback.print_exc()
+                print(err)
+                info = traceback.format_exc()
+                res_data = ('General error', info)
+                create_log(LOGS.ERROR,f'Error in responsing to GUI: {info}')
+                print(info)
                 response = Query_Request(Requests.Error,data=dumps(res_data), memory_view=server_shr)
             else:
                 res_data = ('Success',reciver)
@@ -372,9 +410,11 @@ def get_gui_requests(gui_sem:Semaphore,server_sem:Semaphore,gui_shr:SharedMemory
             finally:
                 response.build_req()
                 server_sem.release()
+                create_log(LOGS.DEBUG,f'REsponded to gui')
         except Exception as err:
-            traceback.print_exc()
-        # messages_q = messages_queues[hash(reciver)]
+                info = traceback.format_exc()
+                create_log(LOGS.ERROR,f'Error in gui request handeling: {info}')
+                print(info)        # messages_q = messages_queues[hash(reciver)]
         # messages_q.put((message, 0)) # might need a lock
 
 def get_used_drive(size:int):
@@ -427,7 +467,9 @@ def get_file_from_node(node: Node, path:str)-> bytes:
     while len(file_data[0])==1 and len(file_data[1]) == 1:
         continue
     sleep(0.5) # in case it uplodes the buffer to soon before the hash 
-    if len(file_data[1]) ==1 and len(file_data[0])>1:
+    if len(file_data[1]) ==0 and len(file_data[0])>1:
+        return False, file_data[1]
+    elif file_data[0]==b'':
         return False, file_data[1]
         # in case there is somethig in the hash and not in the buffer it means an error eccourd
     return True, file_data[0]
@@ -439,7 +481,10 @@ def ask_for_data_recovery(node: Node, drive_name:str, pickeld_q_id:bytes):
     node_msg_q.put((msg, 0))
 
 def recover_drive(recover_drive_id:int, result_drive:int):
-    real_drive_id, parity_drive_id = Parties.get_connected_drives_to_real(recover_drive_id)
+    drives= Parties.get_connected_drives_to_real(recover_drive_id)
+    if drives is None:
+        raise NoNodescurrentlyConnected()
+    real_drive_id, parity_drive_id = drives
     real_drive = Drives.get_drive_by_id(real_drive_id) 
     parity_drive = Drives.get_drive_by_id(parity_drive_id) 
     real_drive_node = find_node_by_mac(real_drive[0])
@@ -567,7 +612,14 @@ def handle_request_q(req:Query_Request):
         try:
             used_drive = send_file_to_max_drive(pure_file_data,user_id,file_name)
         except NotenoughSpaceInTheDrive:
+            create_log(LOGS.ERROR,'file did not get uploaded, there is not enough space in the drive')
             return 'file did not uploaded, there is not enough space in the drive'
+        except NotEnoghDrivesConnected:
+            create_log(LOGS.ERROR,'file did not get uploaded, there is not enough drives in the system')
+            return 'file did not uploaded, there is not enough space in the drive'
+        except Exception as err:
+            create_log(LOGS.ERROR,f'file did not get uploaded due to {err}')
+            return 'file did not uploaded '+err
         all_macs = get_all_macs_currently_connected()
         # check recover
         all_drives.remove(used_drive)
@@ -579,6 +631,7 @@ def handle_request_q(req:Query_Request):
                 second_drive = get_second_drive(filterd_drives)
                 if Parties.check_if_connected(second_drive[1]) and Parties.check_if_connected(parity_drive[1]):
                     raise NotEnoghDrivesConnected()
+                
             else:
                 second_drive, parity_drive = Drives.get_drive_by_id(connected_drives[0]), Drives.get_drive_by_id(connected_drives[1])
             try:
@@ -591,12 +644,20 @@ def handle_request_q(req:Query_Request):
                     raise NotenoughSpaceInTheDrive()
                 create_parity(used_drive,second_drive,parity_drive)
             except NotEnoghDrivesConnected:
+                create_log(LOGS.WARNING,'file uploded with no parity drive Not enough drives are connected')
                 return 'file uploded with no parity drive\nNot enough drives are connected'
             except DrivesDontHaveData:
+                create_log(LOGS.WARNING,'file uploded with no parity drive Drive dont have data')
                 return 'file uploded with no parity drive\nDrive dont have data'
             except NotenoughSpaceInTheDrive:
+                create_log(LOGS.WARNING,'file uploded with no parity drive Pareity Drive dont have enough space left')
                 return 'file uploded with no parity drive\nPareity Drive dont have enough space left'
+            except ErrorInClient:
+                create_log(LOGS.ERROR,'file did not uploded there was an erro in client side')
+                return 'file did not upload there was an erro in the client'
+            create_log(LOGS.INFO,'file uploded with parity drive')
             return 'file uploded with parity drive'
+        create_log(LOGS.INFO,'file uploded with no parity drive')
         return 'file uploded with no parity drive'
     
     elif req.method == Requests.Files_List:
@@ -605,34 +666,116 @@ def handle_request_q(req:Query_Request):
         return update_records(records)
     
     elif req.method == Requests.Retrive_File:
-        file_meta_data = get_file_info(req.file_name)
-        file_mac = Drives.get_drive_by_id(file_meta_data.location)[0]
-        file_node = find_node_by_mac(file_mac)
-        if file_node is None:
-            result_drive = find_recover_drive(file_meta_data.location)
-            data = recover_drive(file_meta_data.location,result_drive)
-            
-            if data is not None:
-                drive_tree = build_file_tree(file_meta_data.location)
-                s,t = extract_file_indicies_by_tree(file_meta_data.path, drive_tree)
-                worked = True
-                file_data = data[s:t]
+            file_meta_data = get_file_info(req.file_name)
+            file_mac = Drives.get_drive_by_id(file_meta_data.location)[0]
+            file_node = find_node_by_mac(file_mac)
+            if file_node is None:
+                result_drive = find_recover_drive(file_meta_data.location)
+                data = recover_drive(file_meta_data.location,result_drive)
+                create_log(LOGS.INFO,'REcoverd drive')
+                if data is not None:
+                    drive_tree = build_file_tree(file_meta_data.location)
+                    s,t = extract_file_indicies_by_tree(file_meta_data.path, drive_tree)
+                    worked = True
+                    file_data = data[s:t]
+                    file_data_d = dycrypt_hamming(file_data)
+                    if file_data_d is None:
+                        create_log(LOGS.INFO,'Error in retrived file in 2 or more places')
+                        raise hammingError('Error in retrived file in 2 or more places') 
+                else:
+                    worked = False
+                    file_data=b''
+            elif file_node is not None:
+                worked, file_data_d = get_file_from_node(file_node, file_meta_data.path)
+            if worked:
+                aes_key = User.get_AES_key_by_id(file_meta_data.relation)
+                aes_manage = AESCipher(aes_key)
+                decrypted = aes_manage.decrypt(file_data_d)
+                return decrypted
             else:
-                worked = False
-                file_data=b''
-        elif file_node is not None:
-            worked, file_data = get_file_from_node(file_node, file_meta_data.path)
-        if worked:
-            aes_key = User.get_AES_key_by_id(file_meta_data.relation)
-            aes_manage = AESCipher(aes_key)
-            decrypted = aes_manage.decrypt(file_data)
-            return decrypted
-        else:
-            raise UnableToUploadFile(file_data)
+                raise UnableToUploadFile(file_data  )
+        
     elif req.method == Requests.Info:
         user_name = req.data.decode()
         print(req.data)
         return get_info(user_name)
+    
+    elif req.method == Requests.Delete_File:
+        file_meta_data = get_file_info(req.file_name)
+        drives = Parties.get_connected_drives_to_real(file_meta_data.location)
+        if drives is None:
+            file_mac = Drives.get_drive_by_id(file_meta_data.location)[0]
+            file_node = find_node_by_mac(file_mac)
+            if file_node is None:
+                raise NoNodescurrentlyConnected()
+        elif not check_if_drives_connected(drives[0],drives[1], file_meta_data.location):
+            raise NoNodescurrentlyConnected()
+        file_mac = Drives.get_drive_by_id(file_meta_data.location)[0]
+        file_node = find_node_by_mac(file_mac)
+        drive_name = Drives.get_drive_by_id(file_meta_data.location)[3]
+        response_object = ['not']
+        send_file_deletion_msg(file_meta_data.path, drive_name, id(response_object), file_node)
+        get_file_deletion_ack(id(response_object))
+        file_meta_data.delete_records()
+        Drives.increase_left_size(file_meta_data.location,file_meta_data.size)
+        if drives is not None:
+            handle_parity_update(drives,file_meta_data.location)
+        return 'good'
+
+def delete_parity_file(parity_drive):
+    file_data = Data.get_parity_data_filed(parity_drive[1])
+    file_node = find_node_by_mac(parity_drive[0])
+    response_object = ['not']
+    send_file_deletion_msg(file_data.path,  parity_drive[3], id(response_object), file_node)
+    get_file_deletion_ack(id(response_object))
+    file_data.delete_records()
+    Drives.increase_left_size(file_data.location,file_data.size)
+
+def handle_parity_update(drives:tuple, used_drive):
+    real = Drives.get_drive_by_id(drives[0])
+    parity = Drives.get_drive_by_id(drives[1])
+    if Data.get_drive_used_size(used_drive) == 0:
+        delete_parity_file(parity)
+        Parties.delete_parity_record(parity[1])
+    else:
+        create_parity(real,Drives.get_drive_by_id(used_drive),parity)
+    
+def check_if_drives_connected(d_1,d_2,d_3):
+    file_mac = Drives.get_drive_by_id(d_1)[0]
+    file_node = find_node_by_mac(file_mac)
+    if file_node is None:
+        return False
+    file_mac = Drives.get_drive_by_id(d_2)[0]
+    file_node = find_node_by_mac(file_mac)
+    if file_node is None:
+        return False
+    file_mac = Drives.get_drive_by_id(d_3)[0]
+    file_node = find_node_by_mac(file_mac)
+    if file_node is None:
+        return False
+    return True
+def get_file_deletion_ack(response_object_id, before_val:list=['not']):
+    response_object = get_object_from_rb(response_object_id)
+    while len(response_object) != 2:
+        continue
+    if response_object[0] == 'error':
+        raise Exception(response_object[1])
+    else:
+        print('good')
+
+def send_file_deletion_msg(file_path:str, file_drive:str, response_object:str, node):
+    res_id = dumps(response_object)
+    messages_q = messages_queues[str(hash(node))]
+    msg = Message(Category.Storage,9,(file_drive.encode(),file_path.encode(),res_id))
+    messages_q.put((msg, 0)) 
+    
+def dycrypt_hamming(data:bytes):
+   arr = bitarray()
+   arr.frombytes(data)
+   unsplited = unsplit_data(arr)
+   return decode_hamming(unsplited)
+   
+    
 
         
 def find_node_by_mac(mac:str) -> Node:
@@ -646,7 +789,7 @@ def find_node_by_mac(mac:str) -> Node:
 def handle_client(client_soc: socket.socket):
     global nodes
     try:
-        end_point = Node(client_soc)
+        end_point = Node(client_soc, comm_type=CommunicatorType.SENDER)
         nodes_locker.acquire()
         nodes.append(end_point)
         nodes_locker.release()
@@ -659,6 +802,7 @@ def handle_client(client_soc: socket.socket):
         while running:
             while len(handle_requests_threads) <= MAX_SUB_THREADS:
                 message,id  = end_point.recive()
+                create_log(LOGS.INFO,f'Recived new message {str(message)}')
                 th = Thread(target=handle_requests, args = (message,send_message_queue,hash(end_point), id))
                 th.start()
                 handle_requests_threads.append(th)
@@ -690,6 +834,7 @@ def main(creds: Tuple[str, int ]):
         server_socket.bind(creds)
         server_socket.listen(5)
         print('SERVER running...')
+        create_log(LOGS.INFO,'SERVER STARTED')
         gui_sem = Semaphore(GUI_SEMAPHORE_NAME, initial_value=0)
         server_sem = Semaphore(SERVER_SEMAPHORE_NAME,initial_value=0)
         gui_shr = SharedMemory(GUI_SHARED_MEMORY_NAME,DEFAULT_SIZE)
@@ -698,13 +843,16 @@ def main(creds: Tuple[str, int ]):
         gui_thread.start()
         while running:
             soc, addr = server_socket.accept()
+            create_log(LOGS.INFO,f"new client connection from: {addr[0]}:{str(addr[1])}")
             print('new connection from: '+addr[0]+':'+str(addr[1]))
             th = Thread(target=handle_client, args= (soc,))
             th.start()
             threads.append(th)
     except Exception as err:
         print('got error: ',err)
-        traceback.print_exc()
+        error_info = traceback.format_exc()
+        create_log(LOGS.ERROR,error_info)
+        print(error_info)
     finally:
         if gui_sem is not None:
             del gui_sem
@@ -714,9 +862,10 @@ def main(creds: Tuple[str, int ]):
             server_socket.close()
         for th in threads:
             th.join()
+        
 
             
 
             
 if __name__ == "__main__":
-    main(('10.100.102.204',8200))
+    main(('127.0.0.1',8200))

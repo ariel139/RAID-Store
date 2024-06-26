@@ -52,7 +52,8 @@ class Drives(DataBaseSession):
     GET_DRIVE_BY_MAC_AND_NAME = 'SELECT drive_id FROM drives WHERE mac = %s AND drive_name = %s'
     GET_DRIVE_USED_AMOUNT = 'SELECT SUM(size) from data WHERE location=%s'
     GET_LEFT_SPACE = 'SELECT left_space from drives WHERE drive_id = %s;'
-    UPDATE_LEFT_SPACE = 'UPDATE drives SET left_space = left_space - %s WHERE drive_id = %s;'
+    DECREASE_LEFT_SPACE = 'UPDATE drives SET left_space = left_space - %s WHERE drive_id = %s;'
+    INCRESE_LEFT_SPACE = 'UPDATE drives SET left_space = left_space + %s WHERE drive_id = %s;'
     
     def _check_size(self, mac, drive_size):
         """
@@ -238,7 +239,12 @@ class Drives(DataBaseSession):
         if ans is None: raise ValueError('Invalid drive id')
         if ans[0]<amount:
             raise NotenoughSpaceInTheDrive('There is not enough space for the amount garnted')
-        db.insert(Drives.UPDATE_LEFT_SPACE,(amount,drive_id))
+        db.insert(Drives.DECREASE_LEFT_SPACE,(amount,drive_id))
+    
+    @staticmethod
+    def increase_left_size(drive_id: int, amount:int):
+        db = DataBaseSession()
+        db.insert(Drives.INCRESE_LEFT_SPACE,(amount,drive_id))
     
    
 if __name__ == "__main__":

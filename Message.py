@@ -25,9 +25,9 @@ import socket
 from struct import pack, unpack
 from typing import Union
 from enums import Category
-
+from AES_manager import AESCipher
 class Message:
-    def __init__(self, category: Category, opcode: int, data: Union[bytes, tuple] = b'', size: bytes = 0):
+    def __init__(self, category: Category, opcode: int, data: Union[bytes, tuple] = b'', size: bytes = 0,aes_key=None):
         """
         Constructor method to initialize the message.
 
@@ -37,6 +37,8 @@ class Message:
             data (Union[bytes, tuple], optional): The data associated with the message. Defaults to b''.
             size (bytes, optional): The size of the message. Defaults to 0.
         """
+        if aes_key is not None:
+            self.aes_obj = AESCipher(aes_key)
         self.category = category.value
         self.opcode = opcode
         if isinstance(data, bytes):
@@ -51,6 +53,7 @@ class Message:
         else:
             self.size = size
 
+   
     def _init_tup(self):
         """
         Method to initialize the tuple data.

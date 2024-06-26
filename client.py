@@ -26,13 +26,16 @@ import os
 from filelock import FileLock
 import traceback
 from info_retrive import get_client_location
+from hamming import bytes_to_hamming, split_data, unsplit_data, decode_hamming, hammingError
+from bitarray import bitarray
+from time import sleep
 lock_path = FileLock("file_path.lock")
 
 # constants
 FILES_LOCK=1
-DEBUG = False
+DEBUG = True
 FILES_PATH = ''
-SERVER_IP = '10.68.121.185' #TODO: set default server ip
+SERVER_IP = '127.0.0.1' #TODO: set default server ip
 SERVER_PORT = 8200 # TODO: Set deafult server port
 CHUNCK_SIZE = PAGESIZE *100
 if DEBUG:
@@ -217,7 +220,7 @@ def get_data_chunk(start_index, end_index, drive_name):
         size = file['size']
         path = file['path']
         files_sum+=size
-        if not start_indecie:
+        if not start_indecie: #start indecie does not initied
             if start_index < files_sum:
                 start_indecie = path, start_index - (files_sum-size)
         if end_index <= files_sum and not end_indecie:
@@ -253,16 +256,18 @@ def send_chuncked_drive(q_id, drive_name: str,start_index:int):
     # data_path = Path(f'{drive_name.decode()}/raid_{drive_name.decode()[:-1]}')
         print(f'mac: {str(MAC)} + drive name: {drive_name}')
         drive_size = get_dir_size(drive_name)
-        chunk_data=get_data_chunk(start_index,start_index+CHUNCK_SIZE, drive_name)
-        is_done = True if start_index>= drive_size else False # wether its the last chunck in the sequnce
+        end_index = max(start_index+CHUNCK_SIZE,drive_size)
+        chunk_data=get_data_chunk(start_index,end_index, drive_name)
+        is_done = True if end_index>= drive_size else False # wether its the last chunck in the sequnce
         if drive_size != 0:
             print(f'{start_index} : {start_index+CHUNCK_SIZE} -- {((start_index+CHUNCK_SIZE)/drive_size)*100}%')
-        end_index = pack('L',socket.htonl(start_index+CHUNCK_SIZE))
+        end_index = pack('L',socket.htonl(end_index))
         start_index = pack('L',socket.htonl(start_index))
         msg = Message(Category.Recovering,8,(q_id,MAC,drive_name, pack('?',is_done),start_index,end_index, chunk_data))
     except Exception:
-        msg = Message(Category.Recovering,8,(f'error: {traceback.format_exc()}',))
+        msg = Message(Category.Recovering,8,(q_id,f'error: {traceback.format_exc()}'))
     return msg
+
 
 
 
@@ -285,7 +290,7 @@ def add_meta_data(file_name:str,file_hash:str, path,drive_name:str):
     else:
         got = False
         for file in curr:
-            if file['path'] == file_meta_data['path'] and file_hash == file['file hash']:
+            if file['path'] == file_meta_data['path'] :
                 file['size'] = str(int(file['size'])+int(file_meta_data['size']))
                 got = True
                 break
@@ -306,10 +311,11 @@ def check_if_file_name_exists(file_name:str):
             return True
     return False
 
-def save_file(data:bytes, file_name: str, file_hash: str, drive_name:str,parity_file:bool=False) -> Path:
+def save_file(data:bytes, file_name: str, file_hash: str, drive_name:str,parity_file:bool=False, new:bool=False) -> Path:
     #TODO: set the deafult directory for file saving on each drive to be: 'raid_{drive name}'
     #TODO: check duplicateds files
     # the file name for each file in the directory will be: sha256(file_name+file_data)
+    file_mode = 'ab' if not new and parity_file else 'wb'
     if parity_file:
         saved_name = file_name + '__' +sha256(file_name.encode()).hexdigest()
     else:
@@ -318,35 +324,72 @@ def save_file(data:bytes, file_name: str, file_hash: str, drive_name:str,parity_
     full_path = Path(f'{drive_name.decode()}/raid_{drive_name.decode()[:-1]}/{saved_name}')
     #TODO: change appropriate full path to linux NOT: sda/raid_sda...
     makedirs(saved_path_directoris, exist_ok=True)
-    with open(full_path, 'wb') as file:
+    with open(full_path, file_mode) as file:
+        if not parity_file:
+            hamming_data= bytes_to_hamming(data)
+            data = split_data(hamming_data).tobytes()
         file.write(data)
     add_meta_data(file_name,file_hash,full_path,drive_name.decode())
-    return full_path
+    return full_path, len(data)
 
 def get_metadata()->list:
-    with lock_path:
-        with open(FILES_PATH) as file:
-            meta_data = load(file)
-    return meta_data
+        with lock_path:
+            with open(FILES_PATH) as file:
+                meta_data = load(file)
+        return meta_data
 
 def get_file_data_and_hash(path:str):
     mt_data =get_metadata()
     for file in mt_data:
         if file["path"] == path:
             with open(path, 'rb') as file_desc:
-                return file["file hash"],file_desc.read()
+                file_data_raw = file_desc.read()
+                file_data = bitarray()
+                file_data.frombytes(file_data_raw)
+                file_data = unsplit_data(file_data)
+                file_data = decode_hamming(file_data)
+                if file_data is None:
+                    return  '',b''
+                print(type(file_data))
+                print(file_data)
+                return file["file hash"], file_data.decode()
     return '',b''
+
+
+def delete_file_meta_data(file_path:str):
+    with lock_path:
+        with open(FILES_PATH, 'r') as file:
+            curr = load(file)
+    res = []
+    for file in curr:
+        if file['path'] != file_path:
+            res.append(file)
+    with lock_path:
+       with open(FILES_PATH,'w') as file:
+            dump(res,file, indent=4)
+def delete_file(file_path:str, ):
+    path = Path(file_path)
+    os.remove(path)
+    delete_file_meta_data(file_path)
+
 def handle_server_message(message: Message, node: Node):
     match Category(message.category):
         case Category.Storage:
             if message.opcode == 1:
-                path_saved = save_file(message.data[0],message.data[2].decode(),message.data[1].decode(),message.data[3])
-                return Message(Category.Storage,2,(str(path_saved).encode(),message.data[-1]))
+                #TODO: check if data is equel to hash
+                path_saved,saved_size = save_file(message.data[0],message.data[2].decode(),message.data[1].decode(),message.data[3])
+                return Message(Category.Storage,2,(str(path_saved).encode(),message.data[4],str(saved_size)))
             elif message.opcode == 4:
                 file_hash, file_data = get_file_data_and_hash(message.data[0].decode())
                 if file_data == b'':
                     return Message(Category.Storage,5,(b'','did not get file',message.data[2],message.data[3]))
                 return Message(Category.Storage,5,(file_data,file_hash,message.data[2]))
+            elif message.opcode == 9:
+                try:
+                    delete_file(message.data[1].decode())
+                    return Message(Category.Storage,10,( message.data[2],b'good',b'none'))
+                except Exception as err:
+                    return Message(Category.Storage,10,( message.data[2],b'error',err.encode()))
         case Category.Recovering:
             if message.opcode == 7:
                 try:
@@ -358,13 +401,20 @@ def handle_server_message(message: Message, node: Node):
                     print('stopped Disk is empty')
                     return Message(Category.Errors,4,('Disk is Empty'))               
             elif message.opcode == 10:
-                file_hash = sha256(message.data[2]).hexdigest()
-                file_size = str(len(message.data[2]))
-                existed = pack('?', check_if_file_name_exists(message.data[1].decode()))
-                path_saved = save_file(message.data[2],message.data[1].decode(),file_hash, message.data[0],True)
-                response = Message(Category.Recovering,11,(str(path_saved),file_hash,file_size, existed,message.data[0]))
-                print('sent parity Drive from client')
-                return response
+                try:
+                    file_hash = sha256(message.data[2]).hexdigest()
+                    file_size = str(len(message.data[2]))
+                    existed_bool = check_if_file_name_exists(message.data[1].decode())
+                    existed = pack('?', existed_bool)
+                    new_file = unpack('?',message.data[3])[0]
+                    path_saved, saved_size = save_file(message.data[2],message.data[1].decode(),file_hash, message.data[0],True,new_file)
+                    response = Message(Category.Recovering,11,(str(path_saved),file_hash,file_size, existed,message.data[0]))
+                    print('sent parity Drive from client')
+                    return response
+                except Exception as err:
+                   print_exc()
+                   return Message(Category.Recovering,11,('error: '+err))
+                
             elif message.opcode == 12:
                 start_index = socket.ntohl(unpack('L',message.data[2])[0])
                 response =  send_chuncked_drive(message.data[0], message.data[1], start_index)
@@ -379,7 +429,11 @@ def handle_mesage(id, message: Message, node: Node):
         #TODO: add buffer so the stdout and in wont mess up
         client_asks.remove(id)
     else:
-        res = handle_server_message(message, node) # res must be of type message
+        try:
+            res = handle_server_message(message, node) # res must be of type message
+        except Exception as err:
+            res = Message(Category.Errors,4,(str(err),))
+
         node.send(res)
     
 def handle_server_requests(node: Node):
@@ -407,7 +461,7 @@ def main():
     client_soc = socket.socket()
     address = (SERVER_IP,SERVER_PORT)
     client_soc.connect(address)
-    node = Node(client_soc)
+    node = Node(client_soc,comm_type=CommunicatorType.RECIVER)
     init_sign_in(node)
     # TODO: add the threads shit
     FILES_PATH = input(f'ENTER path to metadata of files JSON (default: {getcwd()}\\{MAC.decode()}.json): ')

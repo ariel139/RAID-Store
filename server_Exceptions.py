@@ -56,3 +56,6 @@ class DrivesDontHaveData(Exception):
 
 class NotenoughSpaceInTheDrive(Exception):
     pass
+
+class ErrorInClient(Exception):
+    pass

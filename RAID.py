@@ -140,9 +140,6 @@ def convert_bytes(bytes_tuple: tuple):
 
 
 if __name__ == "__main__":
-    data = {
-        '1':b'wpipipV9bHZYg445AXdQrn6tZ/us82Q7851FPxkzJ+A=',
-        '2': b'1bPgqHd/sQVdwIBVhlNRMOspu889SqDtRqF+AJsycuU=',
-    }
+    data = {'699a6410d86fb6ad8a4c880231c818e0d23c6b90f6f0016eb4cf1b66af8b1f61': b"\xa3:<\xad\xc8\xb0\xaa\xacSBccBdBL'1\xbd4\xad%\xb9\x15\xac\xa1%\x9a\xb2\xb4\xaa\xac\x8c\x99\x18NS\xdc\x9b\xd3\xd3\xd2\xdb\x8d\x0f@"+b'\x00'*20, '3bd947720dd1950b60dfb74dcd48c7f9d131d97e3e2e3c3c3428e156ce2361a9': b"\r\xab\t\xd0\xe0\xa4\xd4\x8cHgGaLHO40\xa5\xa9\xab\xbb\xa5\x95\xb8\xa5\xb6\x9b\xba\xba'\xa3\xbb[\xdb\xceZ\xdb\xcdR\x92\r\x16\x0b\xd4P]\x1e\x90\xdc\x99Q\xd1\x14\xd1\xcd\x8cZ\x10T\x1e\x92\x8d]R\xad\x80"}    
     print(xor_drives(data))
     # print(xor_buffers(data))

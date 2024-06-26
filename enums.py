@@ -65,7 +65,9 @@ class Requests(Enum):
     Error=6
     Info=7
 
-
+class CommunicatorType(Enum):
+    SENDER=1
+    RECIVER=2
 client_out_puts = {
     Category.Authentication.name :{
         '4': 'signed in succefuly',
@@ -278,4 +280,5 @@ class Countries(Enum):
     Vietnam= 191,
     Yemen= 192,
     Zambia= 193,
-    Zimbabwe= 194
+    Zimbabwe= 194,
+    Null=195

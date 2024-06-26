@@ -19,13 +19,14 @@ Methods:
 
 import socket
 from Message import Message
-from struct import unpack
-
+from struct import unpack, pack
+from RSA_communication import *
+from AES_manager import AESCipher
 class Node:
     MAX_RECIVE_SIZE = 1024
     SIZE_HEADER_SIZE = 4
 
-    def __init__(self, soc: socket.socket):
+    def __init__(self, soc: socket.socket,rsa_comm:bool=True,**args):
         """
         Constructor method to initialize the node.
 
@@ -36,6 +37,17 @@ class Node:
         self._debug = True
         self.messages = {}
         self._data_stream = b''
+        if rsa_comm:
+            self.rsa_comm = True
+            comm_type = args['comm_type']
+            self.rsa_key = self.init_rsa_communication(comm_type)
+    
+    def init_rsa_communication(self,comm_type: CommunicatorType):
+        if comm_type == CommunicatorType.RECIVER:
+            self.rsa = RSACommunication(CommunicatorType.RECIVER)
+        elif comm_type == CommunicatorType.SENDER:
+            self.rsa = RSACommunication(CommunicatorType.SENDER)
+        return self.rsa.auto_soc(self.soc).decode()
 
     def _generate_id(self):
         """
@@ -52,6 +64,13 @@ class Node:
                 return i
         raise Exception('Unable to communicate too many sessions open')
 
+    def encode_data_stream(self,data:bytes):
+        aes_obj = AESCipher(self.rsa_key)
+        encrypted = aes_obj.encrypt(data)
+        size = len(encrypted)
+        n_size = socket.htonl(size)
+        packed_size = pack('I',n_size)
+        return packed_size+encrypted
     def send(self, message: Message, id: int = 0):
         """
         Method to send a message.
@@ -71,6 +90,8 @@ class Node:
         else:
             self.messages.pop(id)
         message_data = message.build_message(id)
+        if self.rsa_comm:
+            message_data = self.encode_data_stream(message_data)
         self.soc.sendall(message_data)
         if self._debug:
             print('---DEBUG--- SENT:')
@@ -95,6 +116,11 @@ class Node:
         size = data_stream[:4]
         size = unpack('I', size)[0]
         return socket.ntohl(size)
+    def decode_rsa(self, data):
+        # size = unpack('I',data[:4])
+        # size = socket.ntohl(bytes[:4])
+        aes_obj = AESCipher(self.rsa_key)
+        return aes_obj.decrypt(data[4:])
 
     def recive(self) -> tuple:
         """
@@ -115,7 +141,9 @@ class Node:
             data += self.soc.recv(Node.MAX_RECIVE_SIZE)
         if len(data) > int_size + Node.SIZE_HEADER_SIZE:
             self._data_stream += data[int_size + Node.SIZE_HEADER_SIZE:]
-       
+        #TODO: decode rSA
+        if self.rsa_comm:   
+            data = self.decode_rsa(data)
         message, id = Message.parse_response(data)
         if self._debug:
             try:
